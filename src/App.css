@@ -1,0 +1,109 @@
+.app {
+  margin: 0 auto;
+  max-width: 1100px;
+  padding: 2rem 1rem 3rem;
+  color: #1f2937;
+}
+
+.subtitle {
+  margin-top: 0;
+  margin-bottom: 1.5rem;
+  color: #4b5563;
+}
+
+.panel {
+  background: #ffffff;
+  border-radius: 0.75rem;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.08);
+}
+
+.stats-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+button {
+  border: 0;
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.8rem;
+  color: #ffffff;
+  background: #2563eb;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  background: #94a3b8;
+}
+
+button:hover:enabled {
+  background: #1d4ed8;
+}
+
+.dice-results {
+  margin-top: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.die {
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.03em;
+}
+
+.die.selected {
+  outline: 2px solid #1f2937;
+}
+
+.die.food {
+  background: #15803d;
+}
+
+.die.workers {
+  background: #0369a1;
+}
+
+.die.coins {
+  background: #b45309;
+}
+
+.die.goods {
+  background: #7c3aed;
+}
+
+.die.disaster {
+  background: #dc2626;
+}
+
+.list-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.65rem 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.list-item:last-child {
+  border-bottom: 0;
+}
+
+.message {
+  background: #eff6ff;
+}
+
+.game-end {
+  background: #14532d;
+  color: #f8fafc;
+}
