@@ -1,33 +1,43 @@
-# Roll Through the Eras
+# Alea Imperii
 
-Roll Through the Eras is a browser-based civilization dice game inspired by *Roll Through the Ages: The Bronze Age*.
+*A dice-driven civilization game of growth, conquest, and imperial ambition.*
 
-## Features
+Players lead emerging ancient civilizations competing to build the greatest empire before history leaves them behind.
 
-- Turn-based resource-management loop
-- Dice rolling with selective re-rolls
-- Goods track progression (wood → stone → pottery → cloth → spears)
-- Developments (technologies) with persistent effects
-- Monument construction over multiple turns
-- Disaster handling, population feeding, and end-game scoring
+Each turn, players roll custom dice representing their population and institutions. Dice generate food, labor, wealth, military power, knowledge, and political influence. These resources are invested into cities, monuments, armies, trade networks, and technological developments.
 
-## Development
+As empires expand, new provinces can be annexed, trade routes established, and rival powers challenged. Growth brings opportunity, but also instability: famine, rebellion, corruption, invasions, and political crises threaten even the most prosperous realms.
 
-```bash
-npm install
-npm run dev
-```
+The game revolves around balancing short-term survival against long-term development. Should a ruler spend workers constructing monumental architecture, invest in scientific discoveries, expand military forces, or secure public loyalty through prosperity?
 
-## Validation
+Over the course of the game, civilizations evolve from small tribal societies into sprawling imperial states. New technologies unlock stronger dice, more efficient production chains, and unique strategic abilities. Monuments provide prestige and permanent advantages, while military campaigns secure territory and valuable resources.
 
-```bash
-npm run test
-npm run lint
-npm run build
-```
+The game ends when an empire reaches a predefined threshold of developments, monuments, or territorial expansion. Players then score victory points from:
 
-## Nix development shell
+* Cities and provinces
+* Technologies and cultural achievements
+* Monuments and wonders
+* Trade wealth
+* Military prestige
+* Public stability
 
-```bash
-nix develop
-```
+The player who best transforms uncertain dice rolls into a lasting civilization wins.
+
+Core themes:
+
+* Dice-driven engine building
+* Civilization development
+* Resource management
+* Monument construction
+* Territorial expansion
+* Risk management
+* Asymmetric technological progression
+
+Target play time:
+45–90 minutes
+
+Player count:
+1–6 players
+
+Genre:
+Civilizational dice strategy game

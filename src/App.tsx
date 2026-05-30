@@ -51,8 +51,8 @@ function App() {
 
   return (
     <main className="app">
-      <h1>Roll Through the Eras</h1>
-      <p className="subtitle">A web-based civilization dice game inspired by Roll Through the Ages.</p>
+      <h1>Alea Imperii</h1>
+      <p className="subtitle">A dice-driven civilization game of growth, conquest, and imperial ambition.</p>
 
       <section className="panel stats-grid">
         <p>Turn: {gameState.turn}</p>

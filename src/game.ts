@@ -200,7 +200,7 @@ export const initialGameState: GameState = {
   turn: 1,
   rerollsLeft: 2,
   diceResults: [],
-  message: 'Welcome to Roll Through the Eras!',
+  message: 'Welcome to Alea Imperii!',
   gameEnded: false,
 }
 

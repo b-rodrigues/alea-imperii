@@ -1,5 +1,5 @@
 {
-  description = "Roll Through the Eras development environment";
+  description = "Alea Imperii development environment";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11";
@@ -19,7 +19,7 @@
               pkgs.nodejs_22
             ];
             shellHook = ''
-              echo "Roll Through the Eras dev shell ready. Run: npm install"
+              echo "Alea Imperii dev shell ready. Run: npm install"
             '';
           };
         });
