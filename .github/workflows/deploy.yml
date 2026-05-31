@@ -30,6 +30,7 @@ jobs:
       - name: Build with Nix
         run: |
           nix develop --command sh -c "
+            npm ci
             npm run build
           "
         env:
