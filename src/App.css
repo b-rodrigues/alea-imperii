@@ -82,8 +82,12 @@ button:hover:enabled {
   background: #7c3aed;
 }
 
-.die.disaster {
+.die.skull {
   background: #dc2626;
+}
+
+.die.choice {
+  background: #9333ea;
 }
 
 .list-item {
