@@ -145,7 +145,7 @@ export const calculateScore = (state: GameState): number => {
     (total, d) => total + (d.owned ? d.points : 0), 0,
   )
 
-  // Monument points
+  // Monument points: firstClaimed=true means someone else already completed it (later/small points)
   const monPoints = state.monuments.reduce((total, m) => {
     if (!m.completedByPlayer) return total
     return total + (m.firstClaimed ? m.laterPoints : m.firstPoints)
@@ -457,7 +457,7 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
           ...m,
           progress: newProgress,
           completedByPlayer: completed,
-          firstClaimed: completed ? m.firstClaimed : m.firstClaimed, // In solitaire, player is always first
+          // In solitaire, player is always first — firstClaimed stays as-is (false from init)
         }
       })
 
@@ -726,10 +726,9 @@ function resolveCollection(state: GameState): GameState {
   // Add goods
   let nextGoods = addGoods(state.goods, goodsGained)
 
-  // Quarrying: +1 stone whenever stone is produced (i.e. whenever goods are added to stone tier)
+  // Quarrying: +1 stone whenever stone is produced
   if (hasDevelopment(state, 'quarrying') && nextGoods.stone > state.goods.stone) {
-    const stoneProduced = nextGoods.stone - state.goods.stone
-    nextGoods = { ...nextGoods, stone: Math.min(MAX_GOOD_PER_TIER, nextGoods.stone + stoneProduced) }
+    nextGoods = { ...nextGoods, stone: Math.min(MAX_GOOD_PER_TIER, nextGoods.stone + 1) }
   }
 
   const nextFood = Math.min(MAX_FOOD, state.food + foodGained)
