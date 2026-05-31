@@ -13,6 +13,7 @@ import {
   type GoodsType,
   type DiceFace,
 } from './game'
+import { RulesPopup } from './RulesPopup'
 
 const FACE_LABELS: Record<DiceFace, string> = {
   food3: '3 Food',
@@ -76,8 +77,20 @@ function App() {
   const canEndTurn = gameState.phase === 'discarding' &&
     (hasDevelopment(gameState, 'caravans') || totalGoods <= 6)
 
+  const [showRules, setShowRules] = useState(false)
+
   return (
     <main className="app">
+      <button
+        className="rules-button"
+        onClick={() => setShowRules(true)}
+        title="Rules"
+        type="button"
+        aria-label="Show rules"
+      >
+        📖
+      </button>
+      {showRules && <RulesPopup onClose={() => setShowRules(false)} />}
       <h1>Alea Imperii</h1>
       <p className="subtitle">Roll Through the Ages — The Bronze Age</p>
 
