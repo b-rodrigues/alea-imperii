@@ -139,20 +139,13 @@ export const goodsValue = (goods: Record<GoodsType, number>): number =>
 
 const addGoods = (goods: Record<GoodsType, number>, amount: number): Record<GoodsType, number> => {
   const next = { ...goods }
-  let remaining = amount
-  // Fill bottom-to-top (Wood→Spearheads), wrapping if needed
-  let safety = 0
-  while (remaining > 0 && safety < amount + GOODS_ORDER.length) {
-    for (const tier of GOODS_ORDER) {
-      if (remaining <= 0) break
-      if (next[tier] < MAX_GOOD_PER_TIER) {
-        next[tier] += 1
-        remaining -= 1
-      }
+  let currentGoodsSlotIndex = 0
+  for (let g = 0; g < amount; g++) {
+    const tier = GOODS_ORDER[currentGoodsSlotIndex]
+    if (next[tier] < MAX_GOOD_PER_TIER) {
+      next[tier] += 1
     }
-    safety += 1
-    // If all tiers at max, break to avoid infinite loop
-    if (GOODS_ORDER.every((t) => next[t] >= MAX_GOOD_PER_TIER)) break
+    currentGoodsSlotIndex = (currentGoodsSlotIndex + 1) % GOODS_ORDER.length
   }
   return next
 }

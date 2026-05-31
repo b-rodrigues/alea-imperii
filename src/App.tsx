@@ -35,6 +35,7 @@ export default function App() {
     disasterTriggered: string;
     targetDisasterPts: number;
     nextResources: ResourceState;
+    skullCount: number;
   } | null>(null);
 
   const [foodChoiceCount, setFoodChoiceCount] = useState(0);
@@ -63,6 +64,35 @@ export default function App() {
     };
   } | null>(null);
 
+  // Custom Modal dialog states and helper functions
+  interface ModalConfig {
+    title: string;
+    message: string;
+    type: 'alert' | 'confirm';
+    onConfirm: () => void;
+    onCancel?: () => void;
+  }
+  const [modal, setModal] = useState<ModalConfig | null>(null);
+
+  const triggerAlert = (title: string, message: string, onConfirm?: () => void) => {
+    setModal({
+      title,
+      message,
+      type: 'alert',
+      onConfirm: onConfirm || (() => {}),
+    });
+  };
+
+  const triggerConfirm = (title: string, message: string, onConfirm: () => void, onCancel?: () => void) => {
+    setModal({
+      title,
+      message,
+      type: 'confirm',
+      onConfirm,
+      onCancel,
+    });
+  };
+
   // Load state from localStorage on startup and handle audio resume
   useEffect(() => {
     const saved = localStorage.getItem('bronze_age_score_sheet_state');
@@ -70,12 +100,16 @@ export default function App() {
       try {
         const parsed = JSON.parse(saved);
         setGameState(parsed);
+        if (parsed && parsed.isMuted !== undefined) {
+          audio.isMuted = parsed.isMuted;
+        }
       } catch (e) {
         // Fallback to defaults
       }
     }
 
     const handleFirstInteraction = () => {
+      audio.init(); // Synchronously unlock AudioContext within a user gesture callback
       // If we have saved state, respect the unmuted state, otherwise start muted
       let isUnmuted = false;
       if (saved) {
@@ -287,21 +321,25 @@ export default function App() {
   };
 
   const handleRestart = () => {
-    if (window.confirm('Are you sure you want to reset the scoreboard? All progress will be cleared.')) {
-      audio.playChime();
-      const fresh = { ...getStartingState(), isMuted: gameState.isMuted };
-      const nextState: GameState = {
-        ...fresh,
-        setupCompleted: false,
-        playerCount: 1,
-        activePlayerIndex: 0,
-        playerStates: [],
-      };
-      setGameState(nextState);
-      saveState(nextState);
-      setHasRerolledSkullThisTurn(false);
-      setDice([]);
-    }
+    triggerConfirm(
+      'Reset Scoreboard?',
+      'Are you sure you want to reset the scoreboard? All progress will be cleared.',
+      () => {
+        audio.playChime();
+        const fresh = { ...getStartingState(), isMuted: gameState.isMuted };
+        const nextState: GameState = {
+          ...fresh,
+          setupCompleted: false,
+          playerCount: 1,
+          activePlayerIndex: 0,
+          playerStates: [],
+        };
+        setGameState(nextState);
+        saveState(nextState);
+        setHasRerolledSkullThisTurn(false);
+        setDice([]);
+      }
+    );
   };
 
   // Dice Actions
@@ -482,6 +520,9 @@ export default function App() {
     const hasIrrigation = gameState.developments.find((d) => d.id === 'irrigation')?.purchased;
     const hasMedicine = gameState.developments.find((d) => d.id === 'medicine')?.purchased;
     const greatWallBuilt = gameState.monuments.find((m) => m.id === 'great_wall')?.completedByPlayer;
+    const hasReligion = gameState.developments.find((d) => d.id === 'religion')?.purchased;
+
+    const isMultiplayer = gameState.playerCount && gameState.playerCount > 1;
 
     if (skullCount === 2) {
       if (hasIrrigation) {
@@ -491,27 +532,43 @@ export default function App() {
         targetDisasterPts = 2;
       }
     } else if (skullCount === 3) {
-      if (hasMedicine) {
-        disasterTriggered = 'Epidemic (-3 pts averted by Medicine!)';
+      if (!isMultiplayer) {
+        if (hasMedicine) {
+          disasterTriggered = 'Epidemic (-3 pts averted by Medicine!)';
+        } else {
+          disasterTriggered = 'Epidemic (Lose 3 pts)';
+          targetDisasterPts = 3;
+        }
       } else {
-        disasterTriggered = 'Epidemic (Lose 3 pts)';
-        targetDisasterPts = 3;
+        disasterTriggered = 'Epidemic (Opponents suffer Pestilence: -3 disaster points, unless they have Medicine!)';
       }
     } else if (skullCount === 4) {
-      if (greatWallBuilt) {
-        disasterTriggered = 'Invasion (-4 pts averted by Great Wall!)';
+      if (!isMultiplayer) {
+        if (greatWallBuilt) {
+          disasterTriggered = 'Invasion (-4 pts averted by Great Wall!)';
+        } else {
+          disasterTriggered = 'Invasion (Lose 4 pts)';
+          targetDisasterPts = 4;
+        }
       } else {
-        disasterTriggered = 'Invasion (Lose 4 pts)';
-        targetDisasterPts = 4;
+        disasterTriggered = 'Invasion (Opponents suffer Invasion: -4 disaster points, unless they completed the Great Wall!)';
       }
     } else if (skullCount >= 5) {
-      disasterTriggered = 'Revolt (All non-food goods tracks reset to 0!)';
-      // Revolt wipes goods
-      tempResources.wood = 0;
-      tempResources.stone = 0;
-      tempResources.pottery = 0;
-      tempResources.cloth = 0;
-      tempResources.spear = 0;
+      if (!isMultiplayer) {
+        if (hasReligion) {
+          disasterTriggered = 'Revolt (Averted by Religion!)';
+        } else {
+          disasterTriggered = 'Revolt (All non-food goods tracks reset to 0!)';
+          // Revolt wipes goods for active player
+          tempResources.wood = 0;
+          tempResources.stone = 0;
+          tempResources.pottery = 0;
+          tempResources.cloth = 0;
+          tempResources.spear = 0;
+        }
+      } else {
+        disasterTriggered = 'Revolt (Opponents suffer Revolt: lost all non-food goods, unless they have Religion!)';
+      }
     }
 
     // Log the summary and show dialog
@@ -524,6 +581,7 @@ export default function App() {
       disasterTriggered,
       targetDisasterPts,
       nextResources: tempResources,
+      skullCount,
     });
     setFoodChoiceCount(0); // reset choice split to food = 0, rest = workers
     setShowSummaryModal(true);
@@ -563,8 +621,70 @@ export default function App() {
 
     nextResources.food = currentFood;
 
-    const disasterIncrement = summaryData.targetDisasterPts + starvationPenalty;
-    const finalDisastersCount = Math.min(9, gameState.disasterPoints + disasterIncrement);
+    const isMultiplayer = gameState.playerCount && gameState.playerCount > 1;
+    let activePlayerDisasterIncrement = starvationPenalty;
+    let updatedPlayerStates = gameState.playerStates;
+
+    if (!isMultiplayer) {
+      activePlayerDisasterIncrement += summaryData.targetDisasterPts;
+    } else {
+      // Multiplayer:
+      // Drought (2 skulls) affects only the active player who rolled it
+      if (summaryData.skullCount === 2) {
+        activePlayerDisasterIncrement += summaryData.targetDisasterPts;
+      }
+
+      // Epidemic, Invasion, Revolt affects other players (opponents)
+      if (updatedPlayerStates) {
+        const activeIdx = gameState.activePlayerIndex ?? 0;
+        updatedPlayerStates = updatedPlayerStates.map((playerState, idx) => {
+          if (idx === activeIdx) return playerState; // Active player handled separately
+
+          let opponentDisasterPts = playerState.disasterPoints;
+          let opponentResources = { ...playerState.resources };
+          let opponentHistory = [ ...playerState.history ];
+
+          if (summaryData.skullCount === 3) {
+            const oppHasMedicine = playerState.developments.find((d) => d.id === 'medicine')?.purchased;
+            if (!oppHasMedicine) {
+              opponentDisasterPts = Math.min(9, opponentDisasterPts + 3);
+              opponentHistory.unshift(`Suffer Epidemic from Player ${activeIdx + 1}'s skulls: +3 disaster points!`);
+            } else {
+              opponentHistory.unshift(`Epidemic from Player ${activeIdx + 1}'s skulls averted by Medicine.`);
+            }
+          } else if (summaryData.skullCount === 4) {
+            const oppGreatWall = playerState.monuments.find((m) => m.id === 'great_wall')?.completedByPlayer;
+            if (!oppGreatWall) {
+              opponentDisasterPts = Math.min(9, opponentDisasterPts + 4);
+              opponentHistory.unshift(`Suffer Invasion from Player ${activeIdx + 1}'s skulls: +4 disaster points!`);
+            } else {
+              opponentHistory.unshift(`Invasion from Player ${activeIdx + 1}'s skulls averted by Great Wall.`);
+            }
+          } else if (summaryData.skullCount >= 5) {
+            const oppHasReligion = playerState.developments.find((d) => d.id === 'religion')?.purchased;
+            if (!oppHasReligion) {
+              opponentResources.wood = 0;
+              opponentResources.stone = 0;
+              opponentResources.pottery = 0;
+              opponentResources.cloth = 0;
+              opponentResources.spear = 0;
+              opponentHistory.unshift(`Suffer Revolt from Player ${activeIdx + 1}'s skulls: lost all goods!`);
+            } else {
+              opponentHistory.unshift(`Revolt from Player ${activeIdx + 1}'s skulls averted by Religion.`);
+            }
+          }
+
+          return {
+            ...playerState,
+            disasterPoints: opponentDisasterPts,
+            resources: opponentResources,
+            history: opponentHistory,
+          };
+        });
+      }
+    }
+
+    const finalDisastersCount = Math.min(9, gameState.disasterPoints + activePlayerDisasterIncrement);
 
     // Compute status log
     let reportLog = `Turn ${gameState.turn} Results: Gained +${totalFoodYield} Food, +${totalWorkersYield} Workers. `;
@@ -574,8 +694,10 @@ export default function App() {
     if (starvationPenalty > 0) {
       reportLog += `Starvation! Missing ${starvationPenalty} food caused +${starvationPenalty} Disaster Point(s). `;
     }
-    if (summaryData.targetDisasterPts > 0) {
+    if (summaryData.skullCount === 2 && summaryData.targetDisasterPts > 0) {
       reportLog += `Disaster strike: ${summaryData.disasterTriggered} added +${summaryData.targetDisasterPts} Disaster node. `;
+    } else if (summaryData.skullCount > 2) {
+      reportLog += `Disaster strike: ${summaryData.disasterTriggered}. `;
     }
 
     // Add extra coins for developments buy phase and unused workers for build phase
@@ -586,6 +708,7 @@ export default function App() {
       workers: totalWorkersYield,
       coins: summaryData.rolledCoins,
       disasterPoints: finalDisastersCount,
+      playerStates: updatedPlayerStates,
       recentStatus: `Dice resolved. Gained +${totalWorkersYield} Workers to construct cities/monuments and +${summaryData.rolledCoins} temporary coins to buy developments!`,
       history: [reportLog, ...gameState.history],
     };
@@ -634,14 +757,14 @@ export default function App() {
         setLastPurchaseRefund(null);
         updateGameState(nextState);
       } else {
-        alert("You cannot refund a development purchased in previous turns!");
+        triggerAlert("Invalid Action", "You cannot refund a development purchased in previous turns!");
       }
       return;
     }
 
     // Limit check: only 1 development purchase per turn!
     if (gameState.boughtDevelopmentThisTurn) {
-      alert("You can only buy at most 1 development per turn!");
+      triggerAlert("Limit Reached", "You can only buy at most 1 development per turn!");
       return;
     }
 
@@ -690,7 +813,7 @@ export default function App() {
 
     const totalOffered = gameState.coins + goodsVal;
     if (totalOffered < cost) {
-      alert("Not enough coins/goods selected to pay for this development!");
+      triggerAlert("Payment Failed", "Not enough coins/goods selected to pay for this development!");
       return;
     }
 
@@ -803,7 +926,7 @@ export default function App() {
       }
 
       if (availableWorkers < 1) {
-        alert('Not enough workers! Roll worker faces or spend stone with Engineering.');
+        triggerAlert("Not Enough Workers", "Not enough workers! Roll worker faces or spend stone with Engineering.");
         return;
       }
 
@@ -870,7 +993,7 @@ export default function App() {
       if (availableWorkers < delta) {
         const maxAffordable = availableWorkers;
         if (maxAffordable <= 0) {
-          alert('Not enough workers! Roll worker faces or spend stone with Engineering.');
+          triggerAlert("Not Enough Workers", "Not enough workers! Roll worker faces or spend stone with Engineering.");
           return;
         }
         nextChecked = targetMonument.checkedSlots + maxAffordable;
@@ -1038,37 +1161,37 @@ export default function App() {
       gameState.resources.spear;
 
     if (!hasCaravans && currentGoodsTotal > 6) {
-      if (
-        window.confirm(
-          `You currently hold ${currentGoodsTotal} goods. Since you don't possess the Caravans development, you must discard down to 6 total goods! Discard excess now?`
-        )
-      ) {
-        const trimmed = { ...gameState.resources };
-        let count = currentGoodsTotal;
-        while (count > 6) {
-          if (trimmed.spear > 0) {
-            trimmed.spear--;
-          } else if (trimmed.cloth > 0) {
-            trimmed.cloth--;
-          } else if (trimmed.pottery > 0) {
-            trimmed.pottery--;
-          } else if (trimmed.stone > 0) {
-            trimmed.stone--;
-          } else if (trimmed.wood > 0) {
-            trimmed.wood--;
-          } else {
-            break;
+      triggerConfirm(
+        'Discard Excess Goods?',
+        `You currently hold ${currentGoodsTotal} goods. Since you don't possess the Caravans development, you must discard down to 6 total goods! Discard excess now?`,
+        () => {
+          const trimmed = { ...gameState.resources };
+          let count = currentGoodsTotal;
+          while (count > 6) {
+            if (trimmed.spear > 0) {
+              trimmed.spear--;
+            } else if (trimmed.cloth > 0) {
+              trimmed.cloth--;
+            } else if (trimmed.pottery > 0) {
+              trimmed.pottery--;
+            } else if (trimmed.stone > 0) {
+              trimmed.stone--;
+            } else if (trimmed.wood > 0) {
+              trimmed.wood--;
+            } else {
+              break;
+            }
+            count--;
           }
-          count--;
-        }
 
-        const nextState = {
-          ...gameState,
-          resources: trimmed,
-          recentStatus: 'Turn ended. Trimmed goods count down to 6 caps.',
-        };
-        proceedToEndTurn(nextState);
-      }
+          const nextState = {
+            ...gameState,
+            resources: trimmed,
+            recentStatus: 'Turn ended. Trimmed goods count down to 6 caps.',
+          };
+          proceedToEndTurn(nextState);
+        }
+      );
     } else {
       proceedToEndTurn(gameState);
     }
@@ -1207,7 +1330,7 @@ export default function App() {
               Alea Imperii
             </h1>
             <p className="font-label text-[9px] font-bold text-on-tertiary-fixed/60 uppercase tracking-widest mt-2">
-              A dice-rolling civilization build game
+              A civilization game of chance and ambition
             </p>
           </div>
 
@@ -1244,9 +1367,7 @@ export default function App() {
             </button>
           </div>
 
-          <div className="text-[10px] text-on-tertiary-fixed/55 font-mono select-none">
-            Google DeepMind pair-programming companion
-          </div>
+
         </div>
       </main>
     );
@@ -1616,6 +1737,53 @@ export default function App() {
         gameState={gameState}
         onClose={() => setIsStatusOpen(false)}
       />
+
+      {/* Custom Parchment Modal Dialog overlay */}
+      {modal && (
+        <div className="fixed inset-0 bg-black/65 backdrop-blur-xs flex items-center justify-center z-[999] p-4">
+          <div className="w-full max-w-sm texture-parchment border-2 border-amber-950/40 rounded-2xl p-5 shadow-2xl relative overflow-hidden flex flex-col gap-4 border-opacity-40 animate-scale-up">
+            {/* Corners */}
+            <div className="absolute top-3 left-3 w-4 h-4 border-t-2 border-l-2 border-outline-variant/30 pointer-events-none rounded-tl" />
+            <div className="absolute top-3 right-3 w-4 h-4 border-t-2 border-r-2 border-outline-variant/30 pointer-events-none rounded-tr" />
+            <div className="absolute bottom-3 left-3 w-4 h-4 border-b-2 border-l-2 border-outline-variant/30 pointer-events-none rounded-bl" />
+            <div className="absolute bottom-3 right-3 w-4 h-4 border-b-2 border-r-2 border-outline-variant/30 pointer-events-none rounded-br" />
+
+            <div className="flex flex-col gap-2 select-none text-center">
+              <h3 className="font-serif text-lg md:text-xl font-bold text-amber-950 uppercase tracking-wide">
+                {modal.title}
+              </h3>
+              <p className="font-sans text-xs md:text-sm text-on-primary-fixed leading-relaxed font-semibold">
+                {modal.message}
+              </p>
+            </div>
+
+            <div className="flex gap-3 justify-center mt-2.5">
+              {modal.type === 'confirm' && (
+                <button
+                  onClick={() => {
+                    audio.playClick();
+                    if (modal.onCancel) modal.onCancel();
+                    setModal(null);
+                  }}
+                  className="px-4 py-2 bg-on-tertiary-fixed/10 hover:bg-on-tertiary-fixed/20 text-on-primary-fixed border border-on-tertiary-fixed/10 rounded-xl font-serif text-xs font-bold transition-all shadow select-none uppercase tracking-wider cursor-pointer"
+                >
+                  Cancel
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  audio.playClick();
+                  modal.onConfirm();
+                  setModal(null);
+                }}
+                className="px-6 py-2 bg-amber-800 hover:bg-amber-900 text-white rounded-xl font-serif text-xs font-bold transition-all shadow-md select-none uppercase tracking-wider cursor-pointer active:scale-95"
+              >
+                {modal.type === 'confirm' ? 'Confirm' : 'OK'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </main>
   );
