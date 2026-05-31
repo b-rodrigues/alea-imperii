@@ -51,6 +51,29 @@ export interface Development {
   owned: boolean
 }
 
+export interface PlayerState {
+  name: string
+  cities: number
+  citySlots: CitySlot[]
+  food: number
+  goods: Record<GoodsType, number>
+  coins: number
+  workers: number
+  skulls: number
+  monuments: Monument[]
+  developments: Development[]
+  disasterPoints: number
+  rollNumber: number
+  diceResults: DiceFace[]
+  diceKept: boolean[]
+  foodOrWorkerChoices: ('food' | 'workers' | null)[]
+  phase: TurnPhase
+  message: string
+  messageLog: string[]
+  boughtThisTurn: boolean
+  usedLeadership: boolean
+}
+
 export interface GameState {
   cities: number              // how many cities player has (3–7), also = dice count
   citySlots: CitySlot[]       // cities 4–7 build progress
@@ -73,6 +96,12 @@ export interface GameState {
   gameEnded: boolean
   boughtThisTurn: boolean     // limit 1 dev per turn
   usedLeadership: boolean     // track if Leadership reroll used this turn
+
+  // Multiplayer support
+  setupCompleted?: boolean
+  playerCount?: number
+  activePlayerIndex?: number
+  playerStates?: PlayerState[]
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -110,20 +139,13 @@ export const goodsValue = (goods: Record<GoodsType, number>): number =>
 
 const addGoods = (goods: Record<GoodsType, number>, amount: number): Record<GoodsType, number> => {
   const next = { ...goods }
-  let remaining = amount
-  // Fill bottom-to-top (Wood→Spearheads), wrapping if needed
-  let safety = 0
-  while (remaining > 0 && safety < amount + GOODS_ORDER.length) {
-    for (const tier of GOODS_ORDER) {
-      if (remaining <= 0) break
-      if (next[tier] < MAX_GOOD_PER_TIER) {
-        next[tier] += 1
-        remaining -= 1
-      }
+  let currentGoodsSlotIndex = 0
+  for (let g = 0; g < amount; g++) {
+    const tier = GOODS_ORDER[currentGoodsSlotIndex]
+    if (next[tier] < MAX_GOOD_PER_TIER) {
+      next[tier] += 1
     }
-    safety += 1
-    // If all tiers at max, break to avoid infinite loop
-    if (GOODS_ORDER.every((t) => next[t] >= MAX_GOOD_PER_TIER)) break
+    currentGoodsSlotIndex = (currentGoodsSlotIndex + 1) % GOODS_ORDER.length
   }
   return next
 }
@@ -139,6 +161,21 @@ const clearAllGoods = (): Record<GoodsType, number> => ({
 // ────────────────────────────────────────────────────────────────
 // Scoring (rules §9)
 // ────────────────────────────────────────────────────────────────
+
+export const isGameEnded = (state: GameState): boolean => {
+  // 5 developments purchased
+  const devCount = state.developments.filter((d) => d.owned).length
+  if (devCount >= 5) return true
+
+  // All monuments completed
+  const allMonuments = state.monuments.every((m) => m.completedByPlayer || m.firstClaimed)
+  if (allMonuments) return true
+
+  // Solitaire: 10 rounds
+  if ((!state.playerCount || state.playerCount === 1) && state.turn > 10) return true
+
+  return false
+}
 
 export const calculateScore = (state: GameState): number => {
   // Development points
@@ -220,6 +257,38 @@ const defaultCitySlots: CitySlot[] = [
   { index: 7, boxes: 5, progress: 0, built: false },
 ]
 
+export const createInitialPlayerState = (name: string, playerCount: number): PlayerState => {
+  let monuments = defaultMonuments.map((m) => ({ ...m }))
+  if (playerCount === 2) {
+    monuments = monuments.filter((m) => m.id !== 'temple' && m.id !== 'great-pyramid')
+  } else if (playerCount === 3) {
+    monuments = monuments.filter((m) => m.id !== 'hanging-gardens')
+  }
+
+  return {
+    name,
+    cities: 3,
+    citySlots: defaultCitySlots.map((s) => ({ ...s })),
+    food: 3,
+    goods: clearAllGoods(),
+    coins: 0,
+    workers: 0,
+    skulls: 0,
+    monuments,
+    developments: defaultDevelopments.map((d) => ({ ...d })),
+    disasterPoints: 0,
+    rollNumber: 0,
+    diceResults: [],
+    diceKept: [],
+    foodOrWorkerChoices: [],
+    phase: 'rolling',
+    message: `${name}'s turn begins. Roll your dice.`,
+    messageLog: [`${name}'s turn begins. Roll your dice.`],
+    boughtThisTurn: false,
+    usedLeadership: false,
+  }
+}
+
 export const initialGameState: GameState = {
   cities: 3,
   citySlots: defaultCitySlots.map((s) => ({ ...s })),
@@ -242,6 +311,12 @@ export const initialGameState: GameState = {
   gameEnded: false,
   boughtThisTurn: false,
   usedLeadership: false,
+
+  // New setup fields
+  setupCompleted: false,
+  playerCount: 1,
+  activePlayerIndex: 0,
+  playerStates: [],
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -249,6 +324,7 @@ export const initialGameState: GameState = {
 // ────────────────────────────────────────────────────────────────
 
 export type GameAction =
+  | { type: 'START_GAME'; playerCount: number }
   | { type: 'ROLL_DICE'; rolls: DiceFace[] }
   | { type: 'KEEP_DIE'; index: number }
   | { type: 'UNKEEP_DIE'; index: number }
@@ -285,7 +361,7 @@ export const randomRolls = (
 
 const MAX_LOG_ENTRIES = 8
 
-const gameReducerInner = (state: GameState, action: GameAction): GameState => {
+const gameReducerCore = (state: GameState, action: GameAction): GameState => {
   if (state.gameEnded) return state
 
   switch (action.type) {
@@ -295,7 +371,8 @@ const gameReducerInner = (state: GameState, action: GameAction): GameState => {
 
       // Count skulls from this roll
       const newSkulls = action.rolls.filter((f) => f === 'goods2skull').length
-      const kept = action.rolls.map(() => false)
+      // If multiplayer, skulls are auto-kept
+      const kept = action.rolls.map((f) => (state.playerCount && state.playerCount > 1) ? f === 'goods2skull' : false)
 
       return {
         ...state,
@@ -316,6 +393,8 @@ const gameReducerInner = (state: GameState, action: GameAction): GameState => {
     }
     case 'UNKEEP_DIE': {
       if (state.phase !== 'rolling' || state.rollNumber < 1 || state.rollNumber >= 3) return state
+      // In multiplayer, skulls are locked and cannot be unkept
+      if (state.playerCount && state.playerCount > 1 && state.diceResults[action.index] === 'goods2skull') return state
       const kept2 = [...state.diceKept]
       kept2[action.index] = false
       return { ...state, diceKept: kept2 }
@@ -337,6 +416,12 @@ const gameReducerInner = (state: GameState, action: GameAction): GameState => {
       })
 
       const nextKept = [...state.diceKept]
+      // If multiplayer, auto-keep any newly rolled skulls
+      unkeptIndices.forEach((dieIdx) => {
+        if (state.playerCount && state.playerCount > 1 && nextDice[dieIdx] === 'goods2skull') {
+          nextKept[dieIdx] = true
+        }
+      })
 
       const nextRoll = state.rollNumber + 1
       // After roll 3, all dice are kept
@@ -670,6 +755,392 @@ const gameReducerInner = (state: GameState, action: GameAction): GameState => {
 
     default:
       return state
+  }
+}
+
+const gameReducerInner = (state: GameState, action: GameAction): GameState => {
+  // Auto-initialize if setup is not completed and action is a gameplay action
+  let currentState = state
+  if (!state.setupCompleted && action.type !== 'START_GAME') {
+    currentState = {
+      ...state,
+      setupCompleted: true,
+      playerCount: 1,
+      activePlayerIndex: 0,
+      playerStates: [
+        {
+          name: 'Player 1',
+          cities: state.cities,
+          citySlots: state.citySlots,
+          food: state.food,
+          goods: state.goods,
+          coins: state.coins,
+          workers: state.workers,
+          skulls: state.skulls,
+          monuments: state.monuments,
+          developments: state.developments,
+          disasterPoints: state.disasterPoints,
+          rollNumber: state.rollNumber,
+          diceResults: state.diceResults,
+          diceKept: state.diceKept,
+          foodOrWorkerChoices: state.foodOrWorkerChoices,
+          phase: state.phase,
+          message: state.message,
+          messageLog: state.messageLog,
+          boughtThisTurn: state.boughtThisTurn,
+          usedLeadership: state.usedLeadership,
+        }
+      ]
+    }
+  }
+
+  // Handle START_GAME
+  if (action.type === 'START_GAME') {
+    const pCount = action.playerCount
+    const pStates: PlayerState[] = []
+    for (let i = 1; i <= pCount; i++) {
+      pStates.push(createInitialPlayerState(`Player ${i}`, pCount))
+    }
+    const firstPlayer = pStates[0]
+    return {
+      ...state,
+      setupCompleted: true,
+      playerCount: pCount,
+      activePlayerIndex: 0,
+      turn: 1,
+      gameEnded: false,
+      playerStates: pStates,
+      
+      // Sync flat fields with firstPlayer
+      cities: firstPlayer.cities,
+      citySlots: firstPlayer.citySlots,
+      food: firstPlayer.food,
+      goods: firstPlayer.goods,
+      coins: firstPlayer.coins,
+      workers: firstPlayer.workers,
+      skulls: firstPlayer.skulls,
+      monuments: firstPlayer.monuments,
+      developments: firstPlayer.developments,
+      disasterPoints: firstPlayer.disasterPoints,
+      rollNumber: firstPlayer.rollNumber,
+      diceResults: firstPlayer.diceResults,
+      diceKept: firstPlayer.diceKept,
+      foodOrWorkerChoices: firstPlayer.foodOrWorkerChoices,
+      phase: firstPlayer.phase,
+      message: firstPlayer.message,
+      messageLog: firstPlayer.messageLog,
+      boughtThisTurn: firstPlayer.boughtThisTurn,
+      usedLeadership: firstPlayer.usedLeadership,
+    }
+  }
+
+  const activeIdx = currentState.activePlayerIndex ?? 0
+  const activePlayer = currentState.playerStates ? currentState.playerStates[activeIdx] : null
+  if (!activePlayer) return currentState
+
+  // Construct context state for core reducer
+  let subState: GameState = {
+    ...currentState,
+    cities: activePlayer.cities,
+    citySlots: activePlayer.citySlots,
+    food: activePlayer.food,
+    goods: activePlayer.goods,
+    coins: activePlayer.coins,
+    workers: activePlayer.workers,
+    skulls: activePlayer.skulls,
+    monuments: activePlayer.monuments,
+    developments: activePlayer.developments,
+    disasterPoints: activePlayer.disasterPoints,
+    rollNumber: activePlayer.rollNumber,
+    diceResults: activePlayer.diceResults,
+    diceKept: activePlayer.diceKept,
+    foodOrWorkerChoices: activePlayer.foodOrWorkerChoices,
+    phase: activePlayer.phase,
+    message: activePlayer.message,
+    messageLog: activePlayer.messageLog,
+    boughtThisTurn: activePlayer.boughtThisTurn,
+    usedLeadership: activePlayer.usedLeadership,
+  }
+
+  let nextSubState = gameReducerCore(subState, action)
+  if (nextSubState === subState) return currentState
+
+  // Capture new messages/log entries inside the active player's log
+  if (nextSubState.message !== subState.message) {
+    nextSubState = {
+      ...nextSubState,
+      messageLog: [nextSubState.message, ...subState.messageLog].slice(0, MAX_LOG_ENTRIES)
+    }
+  }
+
+  let updatedPlayerStates = currentState.playerStates ? [...currentState.playerStates] : []
+
+  // Global Monument completions check
+  const newlyCompletedMonuments: string[] = []
+  nextSubState.monuments.forEach((mon) => {
+    const oldMon = activePlayer.monuments.find((m) => m.id === mon.id)
+    if (mon.completedByPlayer && oldMon && !oldMon.completedByPlayer) {
+      newlyCompletedMonuments.push(mon.id)
+    }
+  })
+
+  if (newlyCompletedMonuments.length > 0 && updatedPlayerStates.length > 1) {
+    updatedPlayerStates = updatedPlayerStates.map((player, idx) => {
+      if (idx === activeIdx) return player
+      return {
+        ...player,
+        monuments: player.monuments.map((mon) => {
+          if (newlyCompletedMonuments.includes(mon.id)) {
+            return { ...mon, firstClaimed: true }
+          }
+          return mon
+        })
+      }
+    })
+  }
+
+  // Global Disasters check
+  if (action.type === 'FEED_AND_RESOLVE_DISASTERS' && nextSubState.skulls >= 3 && nextSubState.playerCount && nextSubState.playerCount > 1) {
+    if (nextSubState.skulls >= 3) {
+      updatedPlayerStates = updatedPlayerStates.map((player, idx) => {
+        if (idx === activeIdx) return player
+        const hasMedicine = player.developments.some((d) => d.id === 'medicine' && d.owned)
+        if (!hasMedicine) {
+          const penalty = 3
+          return {
+            ...player,
+            disasterPoints: player.disasterPoints + penalty,
+            message: `${player.message} Suffer Pestilence from active player's skulls: -${penalty} disaster points.`,
+            messageLog: [`Suffer Pestilence from active player's skulls: -${penalty} disaster points.`, ...player.messageLog].slice(0, MAX_LOG_ENTRIES)
+          }
+        } else {
+          return {
+            ...player,
+            message: `${player.message} Protected from Pestilence by Medicine.`,
+            messageLog: [`Protected from Pestilence by Medicine.`, ...player.messageLog].slice(0, MAX_LOG_ENTRIES)
+          }
+        }
+      })
+    }
+
+    if (nextSubState.skulls >= 5) {
+      const activeHasReligion = nextSubState.developments.some((d) => d.id === 'religion' && d.owned)
+      if (activeHasReligion) {
+        updatedPlayerStates = updatedPlayerStates.map((player, idx) => {
+          if (idx === activeIdx) return player
+          const oppHasReligion = player.developments.some((d) => d.id === 'religion' && d.owned)
+          if (!oppHasReligion) {
+            return {
+              ...player,
+              goods: clearAllGoods(),
+              message: `${player.message} Suffer Revolt from active player's skulls: lost all goods!`,
+              messageLog: [`Suffer Revolt from active player's skulls: lost all goods!`, ...player.messageLog].slice(0, MAX_LOG_ENTRIES)
+            }
+          } else {
+            return {
+              ...player,
+              message: `${player.message} Protected from Revolt by Religion.`,
+              messageLog: [`Protected from Revolt by Religion.`, ...player.messageLog].slice(0, MAX_LOG_ENTRIES)
+            }
+          }
+        })
+      }
+    }
+  }
+
+  // Save changes to active player
+  updatedPlayerStates[activeIdx] = {
+    name: activePlayer.name,
+    cities: nextSubState.cities,
+    citySlots: nextSubState.citySlots,
+    food: nextSubState.food,
+    goods: nextSubState.goods,
+    coins: nextSubState.coins,
+    workers: nextSubState.workers,
+    skulls: nextSubState.skulls,
+    monuments: nextSubState.monuments,
+    developments: nextSubState.developments,
+    disasterPoints: nextSubState.disasterPoints,
+    rollNumber: nextSubState.rollNumber,
+    diceResults: nextSubState.diceResults,
+    diceKept: nextSubState.diceKept,
+    foodOrWorkerChoices: nextSubState.foodOrWorkerChoices,
+    phase: nextSubState.phase,
+    message: nextSubState.message,
+    messageLog: nextSubState.messageLog,
+    boughtThisTurn: nextSubState.boughtThisTurn,
+    usedLeadership: nextSubState.usedLeadership,
+  }
+
+  let finalActiveIdx = activeIdx
+  let finalTurn = nextSubState.turn
+  let finalGameEnded = nextSubState.gameEnded
+
+  if (action.type === 'END_TURN') {
+    if (nextSubState.phase === 'rolling') {
+      const pCount = nextSubState.playerCount ?? 1
+      if (pCount > 1) {
+        if (activeIdx < pCount - 1) {
+          finalActiveIdx = activeIdx + 1
+          const nextPlayer = updatedPlayerStates[finalActiveIdx]
+          nextPlayer.phase = 'rolling'
+          nextPlayer.rollNumber = 0
+          nextPlayer.diceResults = []
+          nextPlayer.diceKept = []
+          nextPlayer.foodOrWorkerChoices = []
+          nextPlayer.boughtThisTurn = false
+          nextPlayer.usedLeadership = false
+          nextPlayer.coins = 0
+          nextPlayer.workers = 0
+          nextPlayer.skulls = 0
+          nextPlayer.message = `${nextPlayer.name}'s turn begins. Roll your dice.`
+          nextPlayer.messageLog = [`${nextPlayer.name}'s turn begins. Roll your dice.`, ...nextPlayer.messageLog].slice(0, MAX_LOG_ENTRIES)
+
+          return {
+            ...nextSubState,
+            activePlayerIndex: finalActiveIdx,
+            turn: currentState.turn, // Ensure turn round does not advance until last player
+            playerStates: updatedPlayerStates,
+            cities: nextPlayer.cities,
+            citySlots: nextPlayer.citySlots,
+            food: nextPlayer.food,
+            goods: nextPlayer.goods,
+            coins: nextPlayer.coins,
+            workers: nextPlayer.workers,
+            skulls: nextPlayer.skulls,
+            monuments: nextPlayer.monuments,
+            developments: nextPlayer.developments,
+            disasterPoints: nextPlayer.disasterPoints,
+            rollNumber: nextPlayer.rollNumber,
+            diceResults: nextPlayer.diceResults,
+            diceKept: nextPlayer.diceKept,
+            foodOrWorkerChoices: nextPlayer.foodOrWorkerChoices,
+            phase: nextPlayer.phase,
+            message: nextPlayer.message,
+            messageLog: nextPlayer.messageLog,
+            boughtThisTurn: nextPlayer.boughtThisTurn,
+            usedLeadership: nextPlayer.usedLeadership,
+          }
+        } else {
+          // End of round!
+          let gameShouldEnd = false
+          const has5Devs = updatedPlayerStates.some((p) => p.developments.filter((d) => d.owned).length >= 5)
+          if (has5Devs) gameShouldEnd = true
+
+          const firstPlayerMons = updatedPlayerStates[0].monuments
+          const allCompleted = firstPlayerMons.every((m) => m.completedByPlayer || m.firstClaimed)
+          if (allCompleted) gameShouldEnd = true
+
+          if (gameShouldEnd) {
+            finalGameEnded = true
+            updatedPlayerStates = updatedPlayerStates.map((player) => ({
+              ...player,
+              gameEnded: true,
+              phase: 'discarding',
+              message: `Game Over! Final scores calculated.`,
+              messageLog: [`Game Over! Final scores calculated.`, ...player.messageLog].slice(0, MAX_LOG_ENTRIES)
+            }))
+
+            const p1 = updatedPlayerStates[0]
+            return {
+              ...nextSubState,
+              activePlayerIndex: 0,
+              turn: finalTurn,
+              gameEnded: true,
+              playerStates: updatedPlayerStates,
+              cities: p1.cities,
+              citySlots: p1.citySlots,
+              food: p1.food,
+              goods: p1.goods,
+              coins: p1.coins,
+              workers: p1.workers,
+              skulls: p1.skulls,
+              monuments: p1.monuments,
+              developments: p1.developments,
+              disasterPoints: p1.disasterPoints,
+              rollNumber: p1.rollNumber,
+              diceResults: p1.diceResults,
+              diceKept: p1.diceKept,
+              foodOrWorkerChoices: p1.foodOrWorkerChoices,
+              phase: p1.phase,
+              message: p1.message,
+              messageLog: p1.messageLog,
+              boughtThisTurn: p1.boughtThisTurn,
+              usedLeadership: p1.usedLeadership,
+            }
+          } else {
+            // Next round turn
+            finalTurn = nextSubState.turn
+            finalActiveIdx = 0
+            const p1 = updatedPlayerStates[0]
+            p1.phase = 'rolling'
+            p1.rollNumber = 0
+            p1.diceResults = []
+            p1.diceKept = []
+            p1.foodOrWorkerChoices = []
+            p1.boughtThisTurn = false
+            p1.usedLeadership = false
+            p1.coins = 0
+            p1.workers = 0
+            p1.skulls = 0
+            p1.message = `Round ${finalTurn} begins. ${p1.name}'s turn.`
+            p1.messageLog = [`Round ${finalTurn} begins. ${p1.name}'s turn.`, ...p1.messageLog].slice(0, MAX_LOG_ENTRIES)
+
+            return {
+              ...nextSubState,
+              activePlayerIndex: 0,
+              turn: finalTurn,
+              playerStates: updatedPlayerStates,
+              cities: p1.cities,
+              citySlots: p1.citySlots,
+              food: p1.food,
+              goods: p1.goods,
+              coins: p1.coins,
+              workers: p1.workers,
+              skulls: p1.skulls,
+              monuments: p1.monuments,
+              developments: p1.developments,
+              disasterPoints: p1.disasterPoints,
+              rollNumber: p1.rollNumber,
+              diceResults: p1.diceResults,
+              diceKept: p1.diceKept,
+              foodOrWorkerChoices: p1.foodOrWorkerChoices,
+              phase: p1.phase,
+              message: p1.message,
+              messageLog: p1.messageLog,
+              boughtThisTurn: p1.boughtThisTurn,
+              usedLeadership: p1.usedLeadership,
+            }
+          }
+        }
+      }
+    }
+  }
+
+  const currActivePlayer = updatedPlayerStates[activeIdx]
+  return {
+    ...nextSubState,
+    gameEnded: finalGameEnded,
+    playerStates: updatedPlayerStates,
+    cities: currActivePlayer.cities,
+    citySlots: currActivePlayer.citySlots,
+    food: currActivePlayer.food,
+    goods: currActivePlayer.goods,
+    coins: currActivePlayer.coins,
+    workers: currActivePlayer.workers,
+    skulls: currActivePlayer.skulls,
+    monuments: currActivePlayer.monuments,
+    developments: currActivePlayer.developments,
+    disasterPoints: currActivePlayer.disasterPoints,
+    rollNumber: currActivePlayer.rollNumber,
+    diceResults: currActivePlayer.diceResults,
+    diceKept: currActivePlayer.diceKept,
+    foodOrWorkerChoices: currActivePlayer.foodOrWorkerChoices,
+    phase: currActivePlayer.phase,
+    message: currActivePlayer.message,
+    messageLog: currActivePlayer.messageLog,
+    boughtThisTurn: currActivePlayer.boughtThisTurn,
+    usedLeadership: currActivePlayer.usedLeadership,
   }
 }
 
