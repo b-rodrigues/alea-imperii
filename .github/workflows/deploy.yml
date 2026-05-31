@@ -27,12 +27,16 @@ jobs:
       - name: Cache Nix store
         uses: DeterminateSystems/magic-nix-cache-action@v8
 
-      - name: Build with Nix
+      - name: Fix npmDepsHash in flake.nix
         run: |
-          nix develop --command sh -c "
-            npm ci
-            npm run build
-          "
+          CORRECT_HASH=$(nix run nixpkgs#prefetch-npm-deps -- package-lock.json)
+          echo "Computed hash: $CORRECT_HASH"
+          sed -i "s|npmDepsHash = \"[^\"]*\"|npmDepsHash = \"$CORRECT_HASH\"|" flake.nix
+          grep npmDepsHash flake.nix
+
+      - name: Build
+        run: |
+          nix develop --command sh -c "npm ci && npm run build"
         env:
           VITE_BASE_URL: /${{ github.event.repository.name }}/
 
