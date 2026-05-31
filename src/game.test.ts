@@ -50,6 +50,7 @@ describe('gameReducer', () => {
       expect(rolled.skulls).toBe(1)
       expect(rolled.diceKept[1]).toBe(false)
       expect(rolled.diceKept[0]).toBe(false)   // non-skull not locked
+      expect(rolled.diceKept[2]).toBe(false)
     })
 
     it('allows up to 3 rolls', () => {
@@ -130,7 +131,7 @@ describe('gameReducer', () => {
       }
       const s = rollAndCollect(state, ['food3', 'food3', 'good1'])
 
-      // 3 + (3+1) + (3+1) = 11 food
+      // initial 3 + (3+1) + (3+1) = 11 food
       expect(s.food).toBe(11)
     })
 
@@ -143,7 +144,7 @@ describe('gameReducer', () => {
       }
       const s = rollAndCollect(state, ['workers3', 'workers3', 'food3'])
 
-      // (3+1) + (3+1) = 8 workers
+      // 2 workers3 dice: (3+1) + (3+1) = 8 workers
       expect(s.workers).toBe(8)
     })
   })

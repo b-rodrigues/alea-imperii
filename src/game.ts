@@ -32,7 +32,7 @@ export interface Monument {
   firstPoints: number
   laterPoints: number
   completedByPlayer: boolean
-  firstClaimed: boolean       // true when another player already claimed the larger first-completion score
+  firstClaimed: boolean       // true when this monument was first completed by another player
 }
 
 export interface CitySlot {
