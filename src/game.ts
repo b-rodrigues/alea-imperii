@@ -74,6 +74,24 @@ export interface PlayerState {
   usedLeadership: boolean
 }
 
+export interface GameModifiers {
+  requiredDevelopmentsToFinish: number
+  unlimitedDisasters: boolean
+  startingDevelopments: string[]
+  enableBanking: boolean
+  startWithAllCities: boolean
+  extraReroll?: boolean
+  loadedDiceWorkers?: boolean
+  loadedDiceCoins?: boolean
+  generousSteppes?: boolean
+  guildTaxation?: boolean
+  ruthlessAI?: boolean
+  plagueDesolation?: boolean
+  volatileWorld?: boolean
+  solitaireRoundLimit?: number
+  architecturalHegemony?: boolean
+}
+
 export interface GameState {
   cities: number              // how many cities player has (3–7), also = dice count
   citySlots: CitySlot[]       // cities 4–7 build progress
@@ -102,6 +120,7 @@ export interface GameState {
   playerCount?: number
   activePlayerIndex?: number
   playerStates?: PlayerState[]
+  modifiers?: GameModifiers
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -1314,8 +1333,8 @@ function feedAndDisaster(state: GameState): GameState {
 
   // Volatile World Good Destruction
   if (state.modifiers?.volatileWorld && anyDisasterTriggered) {
-    const activeKeys = (Object.keys(nextGoods) as Array<keyof ResourceState>).filter(
-      (k) => k !== 'food' && nextGoods[k] > 0
+    const activeKeys = (Object.keys(nextGoods) as GoodsType[]).filter(
+      (k) => nextGoods[k] > 0
     )
     if (activeKeys.length > 0) {
       const chosen = activeKeys[Math.floor(Math.random() * activeKeys.length)]

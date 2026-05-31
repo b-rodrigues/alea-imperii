@@ -726,7 +726,7 @@ describe('gameReducer', () => {
     })
 
     it('applies loadedDiceWorkers and loadedDiceCoins modifiers inside resolveCollection', () => {
-      let state = {
+      let state: GameState = {
         ...initialGameState,
         modifiers: {
           loadedDiceWorkers: true,
@@ -734,7 +734,7 @@ describe('gameReducer', () => {
         } as any,
         diceResults: ['workers3', 'coins7'] as any,
         rollNumber: 1,
-        phase: 'rolling'
+        phase: 'rolling' as const
       }
       
       const nextState = gameReducer(state, { type: 'COLLECT' })
@@ -743,7 +743,7 @@ describe('gameReducer', () => {
     })
 
     it('applies plagueDesolation and volatileWorld modifiers inside feedAndDisaster', () => {
-      let state = {
+      let state: GameState = {
         ...initialGameState,
         modifiers: {
           plagueDesolation: true,
@@ -756,7 +756,7 @@ describe('gameReducer', () => {
           ...initialGameState.goods,
           wood: 1
         },
-        phase: 'feeding'
+        phase: 'feeding' as const
       }
       
       const nextState = gameReducer(state, { type: 'FEED_AND_RESOLVE_DISASTERS' })
@@ -765,7 +765,7 @@ describe('gameReducer', () => {
     })
 
     it('applies plagueDesolation double disaster score deduction in calculateScore', () => {
-      let state = {
+      let state: GameState = {
         ...initialGameState,
         modifiers: {
           plagueDesolation: true,
@@ -777,14 +777,14 @@ describe('gameReducer', () => {
     })
 
     it('applies architecturalHegemony and solitaireRoundLimit inside checkGameEnd', () => {
-      let state = {
+      let state: GameState = {
         ...initialGameState,
         modifiers: {
           architecturalHegemony: true,
           solitaireRoundLimit: 12,
         } as any,
         turn: 11,
-        phase: 'discarding'
+        phase: 'discarding' as const
       }
       
       const nextState1 = gameReducer(state, { type: 'END_TURN' })
