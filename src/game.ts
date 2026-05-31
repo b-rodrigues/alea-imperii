@@ -69,6 +69,7 @@ export interface GameState {
   foodOrWorkerChoices: ('food' | 'workers' | null)[]  // one per die, non-null only for foodOrWork
   phase: TurnPhase
   message: string
+  messageLog: string[]       // rolling history of status messages (most recent first)
   gameEnded: boolean
   boughtThisTurn: boolean     // limit 1 dev per turn
   usedLeadership: boolean     // track if Leadership reroll used this turn
@@ -237,6 +238,7 @@ export const initialGameState: GameState = {
   foodOrWorkerChoices: [],
   phase: 'rolling',
   message: 'Welcome to Alea Imperii! Roll your dice.',
+  messageLog: ['Welcome to Alea Imperii! Roll your dice.'],
   gameEnded: false,
   boughtThisTurn: false,
   usedLeadership: false,
@@ -281,7 +283,9 @@ export const randomRolls = (
 // Reducer
 // ────────────────────────────────────────────────────────────────
 
-export const gameReducer = (state: GameState, action: GameAction): GameState => {
+const MAX_LOG_ENTRIES = 8
+
+const gameReducerInner = (state: GameState, action: GameAction): GameState => {
   if (state.gameEnded) return state
 
   switch (action.type) {
@@ -669,6 +673,15 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
   }
 }
 
+export const gameReducer = (state: GameState, action: GameAction): GameState => {
+  const next = gameReducerInner(state, action)
+  if (next === state) return state
+  if (next.message !== state.message) {
+    return { ...next, messageLog: [next.message, ...state.messageLog].slice(0, MAX_LOG_ENTRIES) }
+  }
+  return next
+}
+
 // ────────────────────────────────────────────────────────────────
 // Collection resolver (Phase 1c)
 // ────────────────────────────────────────────────────────────────
@@ -813,5 +826,31 @@ function feedAndDisaster(state: GameState): GameState {
     disasterPoints: state.disasterPoints + disasterGained,
     phase: 'building',
     message: messages.join(' ') + ' Build phase: assign workers to cities or monuments.',
+  }
+}
+
+// ────────────────────────────────────────────────────────────────
+// Next action hint (roguelike-style guidance)
+// ────────────────────────────────────────────────────────────────
+
+export function getNextActionHint(state: GameState): string {
+  if (state.gameEnded) return 'Game over. Review your final score.'
+  switch (state.phase) {
+    case 'rolling':
+      if (state.rollNumber === 0) return '→ Click "Roll Dice" to begin your turn.'
+      if (state.rollNumber < 3) return '→ Keep dice you want, then reroll or collect.'
+      return '→ Final roll done. Click "Done Rolling → Collect".'
+    case 'choosing':
+      return '→ Choose Food or Workers for each ⚖ die.'
+    case 'feeding':
+      return '→ Click "Feed & Resolve Disasters" to proceed.'
+    case 'building':
+      return `→ Assign your ${state.workers} workers to cities/monuments, then click Done.`
+    case 'buying':
+      return '→ Buy a development or skip to discard phase.'
+    case 'discarding':
+      return '→ Discard excess goods (if any) then end turn.'
+    default:
+      return ''
   }
 }

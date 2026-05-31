@@ -1,43 +1,130 @@
 .app {
   margin: 0 auto;
   max-width: 1100px;
-  padding: 2rem 1rem 3rem;
+  padding: 0.5rem;
   color: #1f2937;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .subtitle {
   margin-top: 0;
-  margin-bottom: 1.5rem;
+  margin-bottom: 0.5rem;
   color: #4b5563;
+  font-size: 0.8rem;
 }
 
+/* ── Roguelike status log ──────────────────────────────────── */
+.status-log {
+  background: #0f172a;
+  color: #94a3b8;
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  margin-bottom: 0.4rem;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.72rem;
+  line-height: 1.3;
+  flex-shrink: 0;
+}
+
+.status-hint {
+  color: #fbbf24;
+  font-weight: 600;
+  margin-bottom: 0.2rem;
+}
+
+.status-messages {
+  max-height: 4.5em;
+  overflow: hidden;
+}
+
+.log-entry {
+  opacity: 0.5;
+}
+
+.log-entry.latest {
+  color: #e2e8f0;
+  opacity: 1;
+}
+
+/* ── Panels ────────────────────────────────────────────────── */
 .panel {
   background: #ffffff;
-  border-radius: 0.75rem;
-  padding: 1rem;
-  margin-bottom: 1rem;
-  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.08);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.6rem;
+  margin-bottom: 0.4rem;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+  flex-shrink: 0;
 }
 
 .stats-grid {
-  display: grid;
-  gap: 0.75rem;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.stats-grid span {
+  white-space: nowrap;
+}
+
+.goods-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.6rem;
+  font-size: 0.75rem;
+}
+
+.good-chip {
+  background: #f1f5f9;
+  border-radius: 0.25rem;
+  padding: 0.1rem 0.4rem;
+}
+
+.good-chip.total {
+  background: #dbeafe;
+  font-weight: 600;
+}
+
+/* ── Game area (fills remaining space, scrolls if needed) ── */
+.game-area {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.game-area p {
+  margin: 0.2rem 0;
+  font-size: 0.8rem;
+}
+
+.game-area h2 {
+  font-size: 0.85rem;
+  margin-bottom: 0.3rem;
+}
+
+.game-area h3 {
+  font-size: 0.8rem;
+  margin: 0.3rem 0 0.2rem;
 }
 
 .button-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
+  gap: 0.4rem;
 }
 
 button {
   border: 0;
-  border-radius: 0.5rem;
-  padding: 0.5rem 0.8rem;
+  border-radius: 0.35rem;
+  padding: 0.3rem 0.6rem;
   color: #ffffff;
   background: #2563eb;
   cursor: pointer;
+  font-size: 0.75rem;
 }
 
 button:disabled {
@@ -50,15 +137,15 @@ button:hover:enabled {
 }
 
 .dice-results {
-  margin-top: 1rem;
+  margin-top: 0.4rem;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.3rem;
 }
 
 .die {
   text-transform: uppercase;
-  font-size: 0.75rem;
+  font-size: 0.65rem;
   letter-spacing: 0.03em;
 }
 
@@ -94,9 +181,10 @@ button:hover:enabled {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 1rem;
-  padding: 0.65rem 0;
+  gap: 0.5rem;
+  padding: 0.3rem 0;
   border-bottom: 1px solid #e5e7eb;
+  font-size: 0.8rem;
 }
 
 .list-item:last-child {
