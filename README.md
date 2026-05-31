@@ -2,6 +2,8 @@
 
 *A dice-driven civilization game of growth, conquest, and imperial ambition.*
 
+![Alea Imperii Gameplay Screenshot](screenshots/main.png)
+
 Players lead emerging ancient civilizations competing to build the greatest empire before history leaves them behind.
 
 Each turn, players roll custom dice representing their population and institutions. Dice generate food, labor, wealth, military power, knowledge, and political influence. These resources are invested into cities, monuments, armies, trade networks, and technological developments.
