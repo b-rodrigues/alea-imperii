@@ -66,6 +66,10 @@ function App() {
   }
 
   const totalGoods = GOODS_ORDER.reduce((sum, g) => sum + gameState.goods[g], 0)
+  const leadershipReady = hasDevelopment(gameState, 'leadership') &&
+    !gameState.usedLeadership &&
+    gameState.diceKept.length > 0 &&
+    gameState.diceKept.every((k) => k)
 
   const score = useMemo(() => calculateScore(gameState), [gameState])
 
@@ -117,7 +121,7 @@ function App() {
                   key={`die-${i}`}
                   className={`die ${FACE_CSS[face]} ${gameState.diceKept[i] ? 'selected' : ''}`}
                   onClick={() => {
-                    if (hasDevelopment(gameState, 'leadership') && !gameState.usedLeadership) {
+                    if (leadershipReady) {
                       leadershipReroll(i)
                     } else if (gameState.diceKept[i]) {
                       dispatch({ type: 'UNKEEP_DIE', index: i })
@@ -125,7 +129,6 @@ function App() {
                       dispatch({ type: 'KEEP_DIE', index: i })
                     }
                   }}
-                  disabled={face === 'goods2skull' && !hasDevelopment(gameState, 'leadership')}
                   type="button"
                 >
                   {FACE_LABELS[face]}
@@ -135,7 +138,7 @@ function App() {
             </div>
           )}
 
-          {hasDevelopment(gameState, 'leadership') && !gameState.usedLeadership && gameState.rollNumber >= 1 && (
+          {leadershipReady && (
             <p><em>Leadership: click any die to reroll it (once per turn).</em></p>
           )}
         </section>

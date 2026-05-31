@@ -32,7 +32,7 @@ export interface Monument {
   firstPoints: number
   laterPoints: number
   completedByPlayer: boolean
-  firstClaimed: boolean       // global: has ANY player completed this first?
+  firstClaimed: boolean       // true when another player already claimed the larger first-completion score
 }
 
 export interface CitySlot {
@@ -291,7 +291,7 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
 
       // Count skulls from this roll
       const newSkulls = action.rolls.filter((f) => f === 'goods2skull').length
-      const kept = action.rolls.map((f) => f === 'goods2skull') // skulls locked
+      const kept = action.rolls.map(() => false)
 
       return {
         ...state,
@@ -299,7 +299,7 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
         diceKept: kept,
         rollNumber: 1,
         skulls: newSkulls,
-        message: `Roll 1: ${action.rolls.join(', ')}. ${newSkulls > 0 ? `${newSkulls} skull(s) locked.` : 'Select dice to keep, then reroll or collect.'}`,
+        message: `Roll 1: ${action.rolls.join(', ')}. Select dice to keep, then reroll or collect.`,
       }
     }
 
@@ -312,8 +312,6 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
     }
     case 'UNKEEP_DIE': {
       if (state.phase !== 'rolling' || state.rollNumber < 1 || state.rollNumber >= 3) return state
-      // Can't unkeep skulls (they're locked)
-      if (state.diceResults[action.index] === 'goods2skull') return state
       const kept2 = [...state.diceKept]
       kept2[action.index] = false
       return { ...state, diceKept: kept2 }
@@ -334,15 +332,7 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
         nextDice[dieIdx] = action.rolls[rollIdx]
       })
 
-      // Lock new skulls
       const nextKept = [...state.diceKept]
-      let newSkulls = 0
-      unkeptIndices.forEach((dieIdx) => {
-        if (nextDice[dieIdx] === 'goods2skull') {
-          nextKept[dieIdx] = true
-          newSkulls += 1
-        }
-      })
 
       const nextRoll = state.rollNumber + 1
       // After roll 3, all dice are kept
@@ -355,14 +345,14 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
         diceResults: nextDice,
         diceKept: nextKept,
         rollNumber: nextRoll,
-        skulls: state.skulls + newSkulls,
+        skulls: nextDice.filter((face) => face === 'goods2skull').length,
         message: `Roll ${nextRoll}: ${nextDice.join(', ')}.${nextRoll >= 3 ? ' Final roll — must keep all results.' : ''}`,
       }
     }
 
     // ── Leadership reroll (after final roll) ────────────────────
     case 'LEADERSHIP_REROLL': {
-      if (state.phase !== 'rolling' || state.rollNumber < 1) return state
+      if (state.phase !== 'rolling' || state.rollNumber < 1 || !state.diceKept.every(Boolean)) return state
       if (!hasDevelopment(state, 'leadership') || state.usedLeadership) return state
 
       const nextDice = [...state.diceResults]
@@ -444,7 +434,10 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
     case 'BUILD_MONUMENT': {
       if (state.phase !== 'building' || state.workers <= 0) return state
 
-      const workersToUse = Math.min(action.workers, state.workers)
+      const target = state.monuments.find((m) => m.id === action.monumentId && !m.completedByPlayer)
+      if (!target) return state
+
+      const workersToUse = Math.min(action.workers, state.workers, target.boxes - target.progress)
       if (workersToUse <= 0) return state
 
       const monuments = state.monuments.map((m) => {
@@ -473,7 +466,10 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
     case 'BUILD_CITY': {
       if (state.phase !== 'building' || state.workers <= 0) return state
 
-      const workersToUse = Math.min(action.workers, state.workers)
+      const target = state.citySlots.find((c) => c.index === action.cityIndex && !c.built)
+      if (!target) return state
+
+      const workersToUse = Math.min(action.workers, state.workers, target.boxes - target.progress)
       if (workersToUse <= 0) return state
 
       let newCity = false
@@ -504,6 +500,9 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
       const bonusBoxes = action.stoneAmount * 3
 
       if (action.targetType === 'monument') {
+        const target = state.monuments.find((m) => m.id === action.targetId && !m.completedByPlayer)
+        if (!target || target.progress >= target.boxes) return state
+
         const monuments = state.monuments.map((m) => {
           if (m.id !== action.targetId || m.completedByPlayer) return m
           const remaining = m.boxes - m.progress
@@ -522,6 +521,9 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
           message: `Engineering: spent ${action.stoneAmount} stone for ${bonusBoxes} boxes on monument.`,
         }
       } else {
+        const target = state.citySlots.find((c) => c.index === action.targetId && !c.built)
+        if (!target || target.progress >= target.boxes) return state
+
         let newCity = false
         const citySlots = state.citySlots.map((c) => {
           if (c.index !== action.targetId || c.built) return c

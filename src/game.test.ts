@@ -41,14 +41,14 @@ describe('gameReducer', () => {
       expect(rolled.phase).toBe('rolling')
     })
 
-    it('locks skull dice automatically', () => {
+    it('tracks skull dice without auto-locking them', () => {
       const rolled = gameReducer(initialGameState, {
         type: 'ROLL_DICE',
         rolls: ['food3', 'goods2skull', 'good1'],
       })
 
       expect(rolled.skulls).toBe(1)
-      expect(rolled.diceKept[1]).toBe(true)   // skull locked
+      expect(rolled.diceKept[1]).toBe(false)
       expect(rolled.diceKept[0]).toBe(false)   // non-skull not locked
     })
 
@@ -72,14 +72,15 @@ describe('gameReducer', () => {
       expect(s4.rollNumber).toBe(3) // unchanged
     })
 
-    it('cannot unkeep a skull die', () => {
+    it('allows rerolling a skull die before the roll is finalized', () => {
       let s = gameReducer(initialGameState, {
         type: 'ROLL_DICE',
         rolls: ['food3', 'goods2skull', 'good1'],
       })
 
-      s = gameReducer(s, { type: 'UNKEEP_DIE', index: 1 })
-      expect(s.diceKept[1]).toBe(true) // still locked
+      s = gameReducer(s, { type: 'REROLL', rolls: ['food3', 'workers3', 'coins7'] })
+      expect(s.diceResults).toEqual(['food3', 'workers3', 'coins7'])
+      expect(s.skulls).toBe(0)
     })
   })
 
@@ -269,6 +270,45 @@ describe('gameReducer', () => {
       expect(obelisk.progress).toBe(9) // 3 stone × 3 = 9 boxes
       expect(obelisk.completedByPlayer).toBe(true)
       expect(s.goods.stone).toBe(0)
+    })
+
+    it('does not spend workers for an invalid monument target', () => {
+      const s = gameReducer(
+        rollCollectFeed(initialGameState, ['workers3', 'workers3', 'food3']),
+        { type: 'BUILD_MONUMENT', monumentId: 'missing-monument', workers: 3 },
+      )
+
+      expect(s.workers).toBe(6)
+    })
+
+    it('does not spend workers for an invalid city target', () => {
+      const s = gameReducer(
+        rollCollectFeed(initialGameState, ['workers3', 'workers3', 'food3']),
+        { type: 'BUILD_CITY', cityIndex: 99, workers: 2 },
+      )
+
+      expect(s.workers).toBe(6)
+    })
+
+    it('does not spend stone for an invalid engineering target', () => {
+      const state = {
+        ...initialGameState,
+        goods: { wood: 0, stone: 3, pottery: 0, cloth: 0, spearheads: 0 },
+        developments: initialGameState.developments.map((d) =>
+          d.id === 'engineering' ? { ...d, owned: true } : d,
+        ),
+      }
+      const s = gameReducer(
+        rollCollectFeed(state, ['food3', 'food3', 'food3']),
+        {
+          type: 'USE_ENGINEERING',
+          stoneAmount: 2,
+          targetType: 'monument',
+          targetId: 'missing-monument',
+        },
+      )
+
+      expect(s.goods.stone).toBe(3)
     })
   })
 
@@ -467,7 +507,7 @@ describe('gameReducer', () => {
   })
 
   describe('leadership reroll', () => {
-    it('allows rerolling 1 die after final roll', () => {
+    it('only allows rerolling after the roll is finalized', () => {
       const state = {
         ...initialGameState,
         developments: initialGameState.developments.map((d) =>
@@ -479,6 +519,19 @@ describe('gameReducer', () => {
         type: 'ROLL_DICE',
         rolls: ['food3', 'workers3', 'good1'],
       })
+
+      const beforeFinalized = gameReducer(s, {
+        type: 'LEADERSHIP_REROLL',
+        index: 2,
+        roll: 'coins7',
+      })
+
+      expect(beforeFinalized.diceResults[2]).toBe('good1')
+      expect(beforeFinalized.usedLeadership).toBe(false)
+
+      s = gameReducer(s, { type: 'KEEP_DIE', index: 0 })
+      s = gameReducer(s, { type: 'KEEP_DIE', index: 1 })
+      s = gameReducer(s, { type: 'KEEP_DIE', index: 2 })
 
       s = gameReducer(s, {
         type: 'LEADERSHIP_REROLL',
@@ -503,11 +556,18 @@ describe('gameReducer', () => {
         rolls: ['food3', 'workers3', 'good1'],
       })
 
+      s = gameReducer(s, { type: 'KEEP_DIE', index: 0 })
+      s = gameReducer(s, { type: 'KEEP_DIE', index: 1 })
+      s = gameReducer(s, { type: 'KEEP_DIE', index: 2 })
+
       s = gameReducer(s, {
         type: 'LEADERSHIP_REROLL',
         index: 2,
         roll: 'coins7',
       })
+
+      expect(s.diceResults[2]).toBe('coins7')
+      expect(s.usedLeadership).toBe(true)
 
       const s2 = gameReducer(s, {
         type: 'LEADERSHIP_REROLL',
