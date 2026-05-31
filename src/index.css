@@ -1,29 +1,165 @@
-:root {
-  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  line-height: 1.3;
-  font-size: 14px;
+@import url('https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,200..900;1,7..72,200..900&family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&family=EB+Garamond:ital,wght@0,400..800;1,400..800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Literata", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "EB Garamond", serif;
+  --font-label: "Newsreader", serif;
+
+  --color-surface-container-lowest: #100e0b;
+  --color-on-primary-container: #432100;
+  --color-on-primary-fixed-variant: #6d3a00;
+  --color-tertiary-fixed-dim: #e6bead;
+  --color-inverse-primary: #8c4f10;
+  --color-secondary-fixed-dim: #d6c59f;
+  --color-on-secondary-container: #c4b48f;
+  --color-on-tertiary: #432a1f;
+  --color-surface-container: #221f1c;
+  --color-surface-tint: #ffb77b;
+  --color-on-error: #690005;
+  --color-surface-variant: #383431;
+  --color-secondary-fixed: #f3e1b9;
+  --color-tertiary: #e6bead;
+  --color-primary-container: #c8803f;
+  --color-surface-container-high: #2d2926;
+  --color-on-tertiary-fixed-variant: #5c4033;
+  --color-inverse-on-surface: #33302c;
+  --color-error: #ffb4ab;
+  --color-primary-fixed: #ffdcc2;
+  --color-on-surface-variant: #d8c3b4;
+  --color-primary-fixed-dim: #ffb77b;
+  --color-on-error-container: #ffdad6;
+  --color-surface-dim: #161310;
+  --color-tertiary-fixed: #ffdbcc;
+  --color-tertiary-container: #ad8979;
+  --color-surface-container-low: #1e1b18;
+  --color-surface: #161310;
+  --color-secondary-container: #514628;
+  --color-outline: #a08d80;
+  --color-outline-variant: #524439;
+  --color-on-surface: #e9e1dc;
+  --color-background: #161310;
+  --color-on-primary: #4d2700;
+  --color-surface-container-highest: #383431;
+  --color-on-tertiary-container: #3c2418;
+  --color-on-secondary-fixed: #231a03;
+  --color-on-background: #e9e1dc;
+  --color-secondary: #d6c59f;
+  --color-on-secondary: #3a2f14;
+  --color-on-primary-fixed: #2e1500;
+  --color-surface-bright: #3c3835;
+  --color-on-secondary-fixed-variant: #514628;
+  --color-primary: #ffb77b;
+  --color-on-tertiary-fixed: #2c160b;
 }
 
-* {
-  box-sizing: border-box;
+/* Wood background texture simulation */
+.texture-wood {
+  background-image: repeating-linear-gradient(90deg, rgba(20, 15, 10, 0.9) 0px, rgba(20, 15, 10, 0.9) 1px, rgba(30, 20, 15, 0.8) 1px, rgba(30, 20, 15, 0.8) 4px);
+  background-color: #1a1613;
 }
 
-html, body {
-  margin: 0;
-  padding: 0;
-  height: 100%;
-  overflow: hidden;
-  background: #f1f5f9;
+/* Antique/weathered parchment simulation */
+.texture-parchment {
+  background-color: #d1bdae;
+  background-image: 
+    radial-gradient(circle at 15% 25%, rgba(0,0,0,0.03) 0%, transparent 45%),
+    radial-gradient(circle at 85% 85%, rgba(0,0,0,0.05) 0%, transparent 55%),
+    radial-gradient(circle at 50% 50%, rgba(255,255,255,0.1) 0%, transparent 70%);
+  box-shadow: 
+    inset 0 0 50px rgba(0,0,0,0.12),
+    0 15px 35px rgba(0,0,0,0.5);
+  transition: all 0.25s ease-in-out;
 }
 
-#root {
-  height: 100%;
+/* Embossed bronze button plating */
+.embossed-bronze {
+  background: linear-gradient(135deg, #ffb77b, #c8803f);
+  box-shadow: 
+    inset 2px 2px 4px rgba(255,255,255,0.5),
+    inset -2px -2px 4px rgba(0,0,0,0.5),
+    0 4px 10px rgba(0,0,0,0.45);
+  color: #2e1500;
+  text-shadow: 1px 1px 0 rgba(255,255,255,0.2);
 }
 
-h1,
-h2,
-h3 {
-  margin-top: 0;
-  margin-bottom: 0.3rem;
-  font-size: 0.9rem;
+.embossed-bronze:hover {
+  filter: brightness(1.08);
+}
+
+.embossed-bronze:active {
+  box-shadow: 
+    inset -1px -1px 2px rgba(255,255,255,0.4),
+    inset 2px 2px 4px rgba(0,0,0,0.5),
+    0 2px 4px rgba(0,0,0,0.3);
+  transform: translateY(1px);
+}
+
+/* Bone carved dice styles */
+.dice-face {
+  background: linear-gradient(135deg, #fbf7f4, #dcc6b8);
+  box-shadow: 
+    inset -2px -2px 6px rgba(0,0,0,0.25), 
+    inset 2px 2px 6px rgba(255,255,255,0.9), 
+    3px 3px 8px rgba(0,0,0,0.55);
+  border-radius: 0.5rem;
+  color: #4d2700;
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.dice-face:hover:not(:disabled) {
+  transform: scale(1.06) translateY(-2px);
+  filter: brightness(1.02);
+  box-shadow: 
+    inset -2px -2px 6px rgba(0,0,0,0.25), 
+    inset 2px 2px 6px rgba(255,255,255,0.9), 
+    4px 6px 12px rgba(0,0,0,0.6);
+}
+
+.dice-face:active:not(:disabled) {
+  transform: scale(0.98) translateY(1px);
+  box-shadow: 
+    inset -1px -1px 3px rgba(0,0,0,0.2), 
+    inset 1px 1px 3px rgba(255,255,255,0.8), 
+    1px 2px 4px rgba(0,0,0,0.4);
+}
+
+/* First builder monument scoring box */
+.monument-box-first {
+  background: linear-gradient(135deg, #ffdcc2, #c8803f);
+  box-shadow: 
+    inset 1px 1px 3px rgba(255,255,255,0.6), 
+    inset -1px -1px 3px rgba(0,0,0,0.4), 
+    1px 1.5px 3px rgba(0,0,0,0.25);
+  color: #2e1500;
+}
+
+/* Other builder monument scoring box */
+.monument-box-other {
+  background: linear-gradient(135deg, #fbf2db, #d6c59f);
+  box-shadow: 
+    inset 1px 1px 3px rgba(255,255,255,0.6), 
+    inset -1px -1px 3px rgba(0,0,0,0.4), 
+    1px 1.5px 3px rgba(0,0,0,0.25);
+  color: #3a2f14;
+}
+
+/* Scrollbar customization for antique parchment scroll feel */
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(22, 19, 16, 0.3);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(160, 141, 128, 0.5);
+  border-radius: 5px;
+  border: 2px solid #161310;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(160, 141, 128, 0.8);
 }
