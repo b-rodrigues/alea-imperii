@@ -43,6 +43,12 @@ export default function App() {
   // Leadership skill variables
   const [hasRerolledSkullThisTurn, setHasRerolledSkullThisTurn] = useState(false);
 
+  // Rival AI processing states
+  const [isRivalThinking, setIsRivalThinking] = useState(false);
+  const [aiProcessing, setAiProcessing] = useState(false);
+  const [rivalTurnLogs, setRivalTurnLogs] = useState<string[]>([]);
+  const [pendingNextState, setPendingNextState] = useState<GameState | null>(null);
+
   // Development Purchase Modal States
   const [activePurchaseDev, setActivePurchaseDev] = useState<Development | null>(null);
   const [selectedGoodsToSpend, setSelectedGoodsToSpend] = useState<Record<string, boolean>>({
@@ -300,7 +306,7 @@ export default function App() {
   const generateStartingDice = (count: number) => {
     const initialDice: Die[] = Array.from({ length: count }, (_, idx) => ({
       id: idx + 1,
-      value: 'food',
+      value: 'empty',
       kept: false,
       rolling: false,
     }));
@@ -342,6 +348,49 @@ export default function App() {
     );
   };
 
+  const handleForceRestart = () => {
+    audio.playChime();
+    const fresh = { ...getStartingState(), isMuted: gameState.isMuted };
+    const nextState: GameState = {
+      ...fresh,
+      setupCompleted: false,
+      playerCount: 1,
+      activePlayerIndex: 0,
+      playerStates: [],
+    };
+    setGameState(nextState);
+    saveState(nextState);
+    setHasRerolledSkullThisTurn(false);
+    setDice([]);
+  };
+
+  const getGameOverStandings = () => {
+    if (gameState.playerStates && gameState.playerStates.length > 0) {
+      return gameState.playerStates.map((p, idx) => {
+        const name = gameState.gameMode === 'solo_ai' && idx === 1 ? "Rival AI" : `Player ${idx + 1}`;
+        return {
+          name,
+          score: p.score,
+          monuments: p.monuments,
+          developments: p.developments,
+          citiesCount: p.cities.count,
+          disasterPoints: p.disasterPoints,
+        };
+      }).sort((a, b) => b.score - a.score);
+    }
+    // Solo solitaire
+    return [
+      {
+        name: "Human Player",
+        score: gameState.score,
+        monuments: gameState.monuments,
+        developments: gameState.developments,
+        citiesCount: gameState.cities.count,
+        disasterPoints: gameState.disasterPoints,
+      }
+    ];
+  };
+
   // Dice Actions
   const handleToggleKeep = (dieId: number) => {
     if (gameState.phase !== 'roll') return;
@@ -349,6 +398,7 @@ export default function App() {
     setDice((prev) =>
       prev.map((d) => {
         if (d.id === dieId) {
+          if (d.value === 'empty') return d; // cannot keep unrolled dice
           // Skulls cannot be kept or rerolled in Alea Imperii by default!
           if (d.value === 'skull') {
             audio.playClick();
@@ -437,6 +487,11 @@ export default function App() {
   // Auto Evaluate Rolls upon Done Rolling
   const handleDoneRolling = () => {
     if (gameState.phase !== 'roll') return;
+
+    if (gameState.rollsLeft === 3 || dice.some((d) => d.value === 'empty')) {
+      triggerAlert("Roll Dice First", "You must roll the dice at least once before finalizing your turn's rolls!");
+      return;
+    }
 
     audio.playChime();
 
@@ -896,69 +951,99 @@ export default function App() {
     const nextCityNum = gameState.cities.count + 1;
     if (nextCityNum > 7) return; // already maximum cities completed
 
-    const requiredBoxes = getCityRequiredBoxes(nextCityNum);
     const currentProgress = gameState.cities.progress;
 
-    if (slotIdx === currentProgress - 1) {
-      // Unchecking the most recent progress slot
-      audio.playClick();
-      const nextState = {
-        ...gameState,
-        cities: {
-          ...gameState.cities,
-          progress: currentProgress - 1,
+    let nextChecked = slotIdx < currentProgress ? slotIdx : slotIdx + 1;
+    const delta = nextChecked - currentProgress;
+
+    if (delta <= 0) {
+      // Unchecking/reducing is always free, no confirmation needed
+      applyCityProgressToggle(nextChecked, 0, 0);
+      return;
+    }
+
+    // Checking boxes
+    const availableWorkers = gameState.workers;
+    const currentStone = gameState.resources.stone;
+    const hasEngineering = gameState.developments.find((d) => d.id === 'engineering')?.purchased;
+
+    if (availableWorkers < delta && hasEngineering && currentStone > 0) {
+      const deficit = delta - availableWorkers;
+      const stoneToSpend = Math.min(currentStone, Math.ceil(deficit / 3));
+      const workersGained = stoneToSpend * 3;
+
+      triggerConfirm(
+        "Use Engineering?",
+        `Spend ${stoneToSpend} stone for +${workersGained} workers to build this city?`,
+        () => {
+          applyCityProgressToggle(nextChecked, stoneToSpend, workersGained);
         },
-        workers: gameState.workers + 1, // refund worker
-        recentStatus: `Removed 1 worker assignment from City ${nextCityNum}. 1 worker refunded.`,
-      };
-      updateGameState(nextState);
-    } else if (slotIdx === currentProgress) {
-      // Checking the next available progress slot
-      let availableWorkers = gameState.workers;
-      let currentStone = gameState.resources.stone;
-      const hasEngineering = gameState.developments.find((d) => d.id === 'engineering')?.purchased;
-      let stoneSpent = 0;
+        () => {
+          applyCityProgressToggle(nextChecked, 0, 0);
+        }
+      );
+    } else {
+      applyCityProgressToggle(nextChecked, 0, 0);
+    }
+  };
 
-      if (availableWorkers < 1 && hasEngineering && currentStone > 0) {
-        availableWorkers += 3;
-        currentStone -= 1;
-        stoneSpent = 1;
-      }
+  const applyCityProgressToggle = (nextChecked: number, stoneSpent: number, workersGained: number) => {
+    const nextCityNum = gameState.cities.count + 1;
+    if (nextCityNum > 7) return;
 
-      if (availableWorkers < 1) {
+    const requiredBoxes = getCityRequiredBoxes(nextCityNum);
+    const currentProgress = gameState.cities.progress;
+    let availableWorkers = gameState.workers + workersGained;
+    let currentStone = gameState.resources.stone - stoneSpent;
+    const delta = nextChecked - currentProgress;
+
+    let finalNextChecked = nextChecked;
+    if (delta > 0 && availableWorkers < delta) {
+      const maxAffordable = availableWorkers;
+      if (maxAffordable <= 0) {
         triggerAlert("Not Enough Workers", "Not enough workers! Roll worker faces or spend stone with Engineering.");
         return;
       }
+      finalNextChecked = currentProgress + maxAffordable;
+    }
 
-      audio.playClick();
-      let nextProgress = currentProgress + 1;
-      let nextCityCount = gameState.cities.count;
-      let statusText = `Assigned 1 worker to build City ${nextCityNum}.`;
+    const finalDelta = finalNextChecked - currentProgress;
+    audio.playClick();
 
+    let nextProgress = finalNextChecked;
+    let nextCityCount = gameState.cities.count;
+    let statusText = "";
+
+    if (finalDelta > 0) {
+      statusText = `Assigned ${finalDelta} worker(s) to build City ${nextCityNum}.`;
       if (nextProgress >= requiredBoxes) {
         nextCityCount += 1;
         nextProgress = 0;
         audio.playChime();
         statusText = `City ${nextCityNum} completed! You gain +1 die next turn.`;
       }
-
-      const nextState = {
-        ...gameState,
-        cities: {
-          count: nextCityCount,
-          progress: nextProgress,
-        },
-        workers: availableWorkers - 1,
-        resources: {
-          ...gameState.resources,
-          stone: currentStone,
-        },
-        recentStatus: stoneSpent > 0 
-          ? `${statusText} Spent 1 stone (Engineering dev) to gain +3 workers.` 
-          : statusText,
-      };
-      updateGameState(nextState);
+    } else if (finalDelta < 0) {
+      statusText = `Removed ${Math.abs(finalDelta)} worker assignment(s) from City ${nextCityNum}. ${Math.abs(finalDelta)} worker(s) refunded.`;
     }
+
+    const stoneSpentText = stoneSpent > 0 
+      ? ` Spent ${stoneSpent} stone (Engineering dev) to gain +${workersGained} workers.` 
+      : "";
+
+    const nextState = {
+      ...gameState,
+      cities: {
+        count: nextCityCount,
+        progress: nextProgress,
+      },
+      workers: delta > 0 ? availableWorkers - finalDelta : gameState.workers - finalDelta,
+      resources: {
+        ...gameState.resources,
+        stone: currentStone,
+      },
+      recentStatus: stoneSpent > 0 ? `${statusText}${stoneSpentText}` : statusText,
+    };
+    updateGameState(nextState);
   };
 
   // Monuments checkboxes
@@ -966,46 +1051,64 @@ export default function App() {
     const targetMonument = gameState.monuments.find((m) => m.id === monumentId);
     if (!targetMonument) return;
 
-    let nextChecked = targetMonument.checkedSlots;
-    if (slotIndex < targetMonument.checkedSlots) {
-      nextChecked = slotIndex;
-    } else {
-      nextChecked = slotIndex + 1;
-    }
-
+    let nextChecked = slotIndex < targetMonument.checkedSlots ? slotIndex : slotIndex + 1;
     const delta = nextChecked - targetMonument.checkedSlots;
 
-    let availableWorkers = gameState.workers;
-    let currentStone = gameState.resources.stone;
-    const hasEngineering = gameState.developments.find((d) => d.id === 'engineering')?.purchased;
-    let stoneSpent = 0;
-
-    if (delta > 0) {
-      // Checking boxes - requires workers
-      if (availableWorkers < delta && hasEngineering && currentStone > 0) {
-        const deficit = delta - availableWorkers;
-        const stoneToSpend = Math.min(currentStone, Math.ceil(deficit / 3));
-        availableWorkers += stoneToSpend * 3;
-        currentStone -= stoneToSpend;
-        stoneSpent = stoneToSpend;
-      }
-
-      if (availableWorkers < delta) {
-        const maxAffordable = availableWorkers;
-        if (maxAffordable <= 0) {
-          triggerAlert("Not Enough Workers", "Not enough workers! Roll worker faces or spend stone with Engineering.");
-          return;
-        }
-        nextChecked = targetMonument.checkedSlots + maxAffordable;
-      }
+    if (delta <= 0) {
+      // Unchecking/reducing is always free, no confirmation needed
+      applyMonumentToggle(monumentId, nextChecked, 0, 0);
+      return;
     }
 
-    const finalDelta = nextChecked - targetMonument.checkedSlots;
+    // Checking boxes
+    const availableWorkers = gameState.workers;
+    const currentStone = gameState.resources.stone;
+    const hasEngineering = gameState.developments.find((d) => d.id === 'engineering')?.purchased;
+
+    if (availableWorkers < delta && hasEngineering && currentStone > 0) {
+      const deficit = delta - availableWorkers;
+      const stoneToSpend = Math.min(currentStone, Math.ceil(deficit / 3));
+      const workersGained = stoneToSpend * 3;
+
+      triggerConfirm(
+        "Use Engineering?",
+        `Spend ${stoneToSpend} stone for +${workersGained} workers to build this monument?`,
+        () => {
+          applyMonumentToggle(monumentId, nextChecked, stoneToSpend, workersGained);
+        },
+        () => {
+          applyMonumentToggle(monumentId, nextChecked, 0, 0);
+        }
+      );
+    } else {
+      applyMonumentToggle(monumentId, nextChecked, 0, 0);
+    }
+  };
+
+  const applyMonumentToggle = (monumentId: string, nextChecked: number, stoneSpent: number, workersGained: number) => {
+    const targetMonument = gameState.monuments.find((m) => m.id === monumentId);
+    if (!targetMonument) return;
+
+    let availableWorkers = gameState.workers + workersGained;
+    let currentStone = gameState.resources.stone - stoneSpent;
+    const delta = nextChecked - targetMonument.checkedSlots;
+
+    let finalNextChecked = nextChecked;
+    if (delta > 0 && availableWorkers < delta) {
+      const maxAffordable = availableWorkers;
+      if (maxAffordable <= 0) {
+        triggerAlert("Not Enough Workers", "Not enough workers! Roll worker faces or spend stone with Engineering.");
+        return;
+      }
+      finalNextChecked = targetMonument.checkedSlots + maxAffordable;
+    }
+
+    const finalDelta = finalNextChecked - targetMonument.checkedSlots;
     audio.playClick();
 
     const nextMonuments = gameState.monuments.map((m) => {
       if (m.id === monumentId) {
-        const isCompletedNow = nextChecked >= m.slots;
+        const isCompletedNow = finalNextChecked >= m.slots;
         let completedByPlayer = m.completedByPlayer;
         let completedByAI = m.completedByAI;
 
@@ -1030,7 +1133,7 @@ export default function App() {
 
         return {
           ...m,
-          checkedSlots: nextChecked,
+          checkedSlots: finalNextChecked,
           completedByPlayer,
           completedByAI,
         };
@@ -1038,27 +1141,27 @@ export default function App() {
       return m;
     });
 
-    // Compute refund/deduction
-    let nextWorkers = gameState.workers;
-    if (finalDelta > 0) {
-      nextWorkers = availableWorkers - finalDelta;
-    } else {
-      nextWorkers = gameState.workers - finalDelta; // negative delta is positive refund
+    const isNowCompleted = finalNextChecked >= targetMonument.slots && !targetMonument.completedByPlayer;
+    let statusText = finalDelta > 0 
+      ? `Assigned ${finalDelta} worker(s) to build ${targetMonument.name}.`
+      : `Removed ${Math.abs(finalDelta)} worker assignment(s) from ${targetMonument.name}. ${Math.abs(finalDelta)} worker(s) refunded.`;
+
+    if (isNowCompleted) {
+      statusText = `Completed ${targetMonument.name}! Gained victory points.`;
+      audio.playChime();
     }
 
     const nextState = {
       ...gameState,
       monuments: nextMonuments,
-      workers: nextWorkers,
+      workers: finalDelta > 0 ? availableWorkers - finalDelta : gameState.workers - finalDelta,
       resources: {
         ...gameState.resources,
         stone: currentStone,
       },
-      recentStatus: stoneSpent > 0
-        ? `Built on ${targetMonument.name} (checked ${Math.abs(finalDelta)} slots). Spent ${stoneSpent} stone (Engineering dev) to gain +${stoneSpent * 3} workers.`
-        : finalDelta > 0
-          ? `Assigned ${finalDelta} workers to ${targetMonument.name}.`
-          : `Removed ${Math.abs(finalDelta)} workers from ${targetMonument.name}. Refunded ${Math.abs(finalDelta)} workers.`,
+      recentStatus: stoneSpent > 0 
+        ? `${statusText} Spent ${stoneSpent} stone (Engineering dev) to gain +${workersGained} workers.` 
+        : statusText,
     };
 
     const isMulti = gameState.playerCount && gameState.playerCount > 1;
@@ -1152,6 +1255,20 @@ export default function App() {
   const handleEndTurn = () => {
     audio.playChime();
 
+    if (gameState.workers > 0) {
+      triggerConfirm(
+        'Unassigned Workers',
+        `You have ${gameState.workers} unassigned worker(s)! Ending your turn now will forfeit them. End turn anyway?`,
+        () => {
+          proceedWithEndTurnCheck();
+        }
+      );
+    } else {
+      proceedWithEndTurnCheck();
+    }
+  };
+
+  const proceedWithEndTurnCheck = () => {
     const hasCaravans = gameState.developments.find((d) => d.id === 'caravans')?.purchased;
     const currentGoodsTotal =
       gameState.resources.wood +
@@ -1197,6 +1314,52 @@ export default function App() {
     }
   };
 
+  const checkIsGameOver = (state: GameState): { ended: boolean; reason: string } => {
+    // Helper to check monument completion across all players
+    const isMonCompletedAnywhere = (monId: string) => {
+      if (state.playerStates && state.playerStates.length > 0) {
+        return state.playerStates.some(p => {
+          const mon = p.monuments.find(m => m.id === monId);
+          return mon ? (mon.completedByPlayer || mon.checkedSlots === mon.slots) : false;
+        });
+      }
+      const mon = state.monuments.find(m => m.id === monId);
+      return mon ? mon.completedByPlayer : false;
+    };
+
+    // Condition 1: All active monuments completed
+    const allActiveMonsCompleted = state.monuments.every(m => isMonCompletedAnywhere(m.id));
+    if (allActiveMonsCompleted && state.monuments.length > 0) {
+      return { ended: true, reason: "All active monuments have been completed!" };
+    }
+
+    // Condition 2: 5 developments purchased by any player
+    if (state.playerStates && state.playerStates.length > 0) {
+      for (let i = 0; i < state.playerStates.length; i++) {
+        const p = state.playerStates[i];
+        const numDevs = p.developments.filter(d => d.purchased).length;
+        if (numDevs >= 5) {
+          const playerName = state.gameMode === 'solo_ai' && i === 1 ? "Rival AI" : `Player ${i + 1}`;
+          return { ended: true, reason: `${playerName} purchased their 5th development!` };
+        }
+      }
+    } else {
+      const numDevs = state.developments.filter(d => d.purchased).length;
+      if (numDevs >= 5) {
+        return { ended: true, reason: "You purchased your 5th development!" };
+      }
+    }
+
+    // Condition 3: Solitaire Turn Limit (10 turns/rounds)
+    if (state.gameMode === 'solo') {
+      if (state.turn >= 10) {
+        return { ended: true, reason: "10 rounds have been completed!" };
+      }
+    }
+
+    return { ended: false, reason: "" };
+  };
+
   const proceedToEndTurn = (stateBeforeEnd: GameState) => {
     if (stateBeforeEnd.gameMode === 'hotseat' && stateBeforeEnd.playerStates) {
       const activeIdx = stateBeforeEnd.activePlayerIndex ?? 0;
@@ -1219,6 +1382,21 @@ export default function App() {
 
       const nextIdx = (activeIdx + 1) % pCount;
       const nextTurn = nextIdx === 0 ? stateBeforeEnd.turn + 1 : stateBeforeEnd.turn;
+
+      // Check game-over condition at the end of a round (when transitioning back to index 0)
+      if (nextIdx === 0) {
+        const gameCheck = checkIsGameOver(stateBeforeEnd);
+        if (gameCheck.ended) {
+          const finalState: GameState = {
+            ...stateBeforeEnd,
+            phase: 'end',
+            recentStatus: `Game Over! ${gameCheck.reason}`,
+          };
+          setGameState(finalState);
+          saveState(finalState);
+          return;
+        }
+      }
 
       const nextPlayer = stateBeforeEnd.playerStates[nextIdx];
       const nextState: GameState = {
@@ -1250,7 +1428,19 @@ export default function App() {
     } else if (stateBeforeEnd.gameMode === 'solo_ai') {
       executeAITurn(stateBeforeEnd);
     } else {
-      // Solo High Score Mode: round increments immediately, no rival turn!
+      // Solo High Score Mode: check game over immediately
+      const gameCheck = checkIsGameOver(stateBeforeEnd);
+      if (gameCheck.ended) {
+        const finalState: GameState = {
+          ...stateBeforeEnd,
+          phase: 'end',
+          recentStatus: `Game Over! ${gameCheck.reason}`,
+        };
+        setGameState(finalState);
+        saveState(finalState);
+        return;
+      }
+
       const nextTurnCount = stateBeforeEnd.turn + 1;
       const nextState: GameState = {
         ...stateBeforeEnd,
@@ -1276,44 +1466,423 @@ export default function App() {
 
   // Neighbor AI opponent turn step
   const executeAITurn = (sourceState: GameState) => {
-    const rivals = ['Assyrian Empire', 'Babylonians', 'Pharaoh of Egypt', 'Kingdom of Troy'];
-    const selectedRival = rivals[Math.floor(Math.random() * rivals.length)];
+    const aiState = sourceState.playerStates ? sourceState.playerStates[1] : null;
+    if (!aiState) return;
 
-    let logMessage = '';
+    setIsRivalThinking(true);
+    setAiProcessing(true);
+    setRivalTurnLogs([]);
+    setPendingNextState(null);
+
+    const logs: string[] = [];
+    logs.push("Rival turn started.");
+
+    let rolledCoins = 0;
+    let gainedFood = 0;
+    let gainedWorkers = 0;
+    let goodsCount = 0;
+    let skullCount = 0;
+    let foodOrWorkerDiceCount = 0;
+
+    const faces: Die['value'][] = ['food', 'goods', 'skull', 'worker', 'food_or_worker', 'coin'];
+    const diceCount = aiState.cities.count;
+
+    // Simulate up to 3 rolls:
+    let keptDice: Die['value'][] = [];
+
+    for (let roll = 1; roll <= 3; roll++) {
+      const activeCount = diceCount - keptDice.length;
+      if (activeCount <= 0) break;
+
+      const newRoll = Array.from({ length: activeCount }, () => faces[Math.floor(Math.random() * faces.length)]);
+      const combined = [...keptDice, ...newRoll];
+
+      keptDice = [];
+
+      combined.forEach((face) => {
+        if (face === 'skull') {
+          keptDice.push(face);
+          return;
+        }
+
+        if (face === 'goods' || face === 'worker' || face === 'coin') {
+          keptDice.push(face);
+          return;
+        }
+
+        if (face === 'food') {
+          if (aiState.resources.food < aiState.cities.count) {
+            keptDice.push(face);
+            return;
+          }
+        }
+
+        if (roll === 3) {
+          keptDice.push(face);
+        }
+      });
+    }
+
+    const hasAgriculture = aiState.developments.find((d) => d.id === 'agriculture')?.purchased;
+    const hasMasonry = aiState.developments.find((d) => d.id === 'masonry')?.purchased;
+    const hasCoinage = aiState.developments.find((d) => d.id === 'coinage')?.purchased;
+
+    keptDice.forEach((face) => {
+      switch (face) {
+        case 'food':
+          gainedFood += hasAgriculture ? 4 : 3;
+          break;
+        case 'goods':
+          goodsCount += 1;
+          break;
+        case 'skull':
+          goodsCount += 2;
+          skullCount += 1;
+          break;
+        case 'worker':
+          gainedWorkers += hasMasonry ? 4 : 3;
+          break;
+        case 'food_or_worker':
+          foodOrWorkerDiceCount += 1;
+          break;
+        case 'coin':
+          rolledCoins += hasCoinage ? 12 : 7;
+          break;
+      }
+    });
+
+    let choiceFood = 0;
+    let choiceWorkers = 0;
+    for (let c = 0; c < foodOrWorkerDiceCount; c++) {
+      if (aiState.resources.food + gainedFood + choiceFood * (hasAgriculture ? 3 : 2) < aiState.cities.count) {
+        choiceFood += 1;
+      } else {
+        choiceWorkers += 1;
+      }
+    }
+    gainedFood += choiceFood * (hasAgriculture ? 3 : 2);
+    gainedWorkers += choiceWorkers * (hasMasonry ? 3 : 2);
+
+    logs.push(`Rolled ${diceCount} dice: ` + keptDice.map((d) => d.toUpperCase()).join(", "));
+    
+    let collectionMsg = "Collected: ";
+    const collectedParts: string[] = [];
+    if (gainedFood > 0) collectedParts.push(`+${gainedFood} Food`);
+    if (goodsCount > 0) collectedParts.push(`+${goodsCount} Goods`);
+    if (gainedWorkers > 0) collectedParts.push(`+${gainedWorkers} Workers`);
+    if (rolledCoins > 0) collectedParts.push(`+${rolledCoins} Coins`);
+    if (skullCount > 0) collectedParts.push(`+${skullCount} Skulls`);
+    logs.push(collectionMsg + (collectedParts.length > 0 ? collectedParts.join(", ") : "nothing"));
+
+    // Add goods sequentially
+    const goodsOrder: Array<keyof ResourceState> = ['wood', 'stone', 'pottery', 'cloth', 'spear'];
+    const limits = getResourceLimits();
+    const tempResources = { ...aiState.resources };
+    const gainedGoodsDisplay: string[] = [];
+
+    let currentSlot = 0;
+    const hasQuarrying = aiState.developments.find((d) => d.id === 'quarrying')?.purchased;
+
+    for (let g = 0; g < goodsCount; g++) {
+      const key = goodsOrder[currentSlot];
+      const max = limits[key];
+      if (tempResources[key] < max) {
+        tempResources[key] += 1;
+        gainedGoodsDisplay.push(key.toUpperCase());
+        if (key === 'stone' && hasQuarrying && tempResources.stone < limits.stone) {
+          tempResources.stone += 1;
+          gainedGoodsDisplay.push('STONE (+1 Quarrying)');
+        }
+      }
+      currentSlot = (currentSlot + 1) % goodsOrder.length;
+    }
+
+    if (gainedGoodsDisplay.length > 0) {
+      logs.push(`Goods added: ${gainedGoodsDisplay.join(', ')}`);
+    }
+
+    // Feed cities
+    let starvationPenalty = 0;
+    let nextFood = Math.min(limits.food, tempResources.food + gainedFood);
+    const requiredFood = aiState.cities.count;
+
+    if (nextFood >= requiredFood) {
+      nextFood -= requiredFood;
+      logs.push(`Fed ${requiredFood} cities with ${requiredFood} food.`);
+    } else {
+      starvationPenalty = requiredFood - nextFood;
+      nextFood = 0;
+      logs.push(`Famine! ${starvationPenalty} unfed cities caused +${starvationPenalty} Disaster Points.`);
+    }
+    tempResources.food = nextFood;
+
+    // Disasters resolution
+    let nextAIDisasterPoints = aiState.disasterPoints;
+    let activePlayerState = { ...sourceState.playerStates[0] };
+    let activePlayerDisasterPoints = sourceState.playerStates[0].disasterPoints;
+    let activePlayerResources = { ...sourceState.playerStates[0].resources };
+
+    if (starvationPenalty > 0) {
+      nextAIDisasterPoints = Math.min(9, nextAIDisasterPoints + starvationPenalty);
+    }
+
+    if (skullCount === 2) {
+      const oppHasIrrigation = aiState.developments.find((d) => d.id === 'irrigation')?.purchased;
+      if (oppHasIrrigation) {
+        logs.push(`Averted Drought with Irrigation!`);
+      } else {
+        nextAIDisasterPoints = Math.min(9, nextAIDisasterPoints + 2);
+        logs.push(`Suffered Drought: +2 disaster points.`);
+      }
+    } else if (skullCount === 3) {
+      logs.push(`Rolled 3 skulls! Epidemic (Pestilence) strikes the player.`);
+      const playerHasMedicine = activePlayerState.developments.find((d) => d.id === 'medicine')?.purchased;
+      if (playerHasMedicine) {
+        logs.push(`Player averted Epidemic with Medicine.`);
+      } else {
+        activePlayerDisasterPoints = Math.min(9, activePlayerDisasterPoints + 3);
+        logs.push(`Player suffered Epidemic: +3 disaster points.`);
+      }
+    } else if (skullCount === 4) {
+      logs.push(`Rolled 4 skulls! Invasion strikes the player.`);
+      const playerGreatWall = sourceState.monuments.find((m) => m.id === 'great_wall')?.completedByPlayer;
+      if (playerGreatWall) {
+        logs.push(`Player averted Invasion with Great Wall.`);
+      } else {
+        activePlayerDisasterPoints = Math.min(9, activePlayerDisasterPoints + 4);
+        logs.push(`Player suffered Invasion: +4 disaster points.`);
+      }
+    } else if (skullCount >= 5) {
+      logs.push(`Rolled 5+ skulls! Revolt strikes the player.`);
+      const playerHasReligion = activePlayerState.developments.find((d) => d.id === 'religion')?.purchased;
+      if (playerHasReligion) {
+        logs.push(`Player averted Revolt with Religion.`);
+      } else {
+        activePlayerResources.wood = 0;
+        activePlayerResources.stone = 0;
+        activePlayerResources.pottery = 0;
+        activePlayerResources.cloth = 0;
+        activePlayerResources.spear = 0;
+        logs.push(`Player suffered Revolt: lost all non-food goods.`);
+      }
+    }
+
+    // Build Phase
+    let remainingWorkers = gainedWorkers;
+    let currentCitiesCount = aiState.cities.count;
+    let currentCitiesProgress = aiState.cities.progress;
+
+    while (remainingWorkers > 0 && currentCitiesCount < 7) {
+      const requiredProgress = getCityRequiredBoxes(currentCitiesCount + 1);
+      const progressNeeded = requiredProgress - currentCitiesProgress;
+      if (remainingWorkers >= progressNeeded) {
+        remainingWorkers -= progressNeeded;
+        currentCitiesCount += 1;
+        currentCitiesProgress = 0;
+        logs.push(`Built city #${currentCitiesCount}!`);
+      } else {
+        currentCitiesProgress += remainingWorkers;
+        remainingWorkers = 0;
+        logs.push(`Completed ${currentCitiesProgress}/${requiredProgress} progress for city #${currentCitiesCount + 1}.`);
+      }
+    }
+
+    // Monuments checking
+    const completedMonumentIdsThisTurn: string[] = [];
     const nextMonuments = sourceState.monuments.map((m) => {
-      if (!m.completedByAI && Math.random() < 0.25) {
-        logMessage = `${selectedRival} completed work on the ${m.name}! They claimed the First Builder victory points slot!`;
+      if (remainingWorkers <= 0 || m.completedByPlayer) {
+        return m;
+      }
+
+      const slotLimit = m.slots;
+      const currentChecked = m.checkedSlots;
+      const slotsNeeded = slotLimit - currentChecked;
+
+      if (remainingWorkers >= slotsNeeded) {
+        remainingWorkers -= slotsNeeded;
+        logs.push(`Completed construction on the ${m.name}!`);
+        completedMonumentIdsThisTurn.push(m.id);
+        return {
+          ...m,
+          checkedSlots: slotLimit,
+          completedByPlayer: true,
+        };
+      } else {
+        const progressApplied = remainingWorkers;
+        remainingWorkers = 0;
+        logs.push(`Checked ${currentChecked + progressApplied}/${slotLimit} slots on the ${m.name}.`);
+        return {
+          ...m,
+          checkedSlots: currentChecked + progressApplied,
+        };
+      }
+    });
+
+    // Buy Phase
+    const availableDevelopments = aiState.developments.filter((d) => !d.purchased);
+    availableDevelopments.sort((a, b) => b.cost - a.cost);
+
+    let coins = rolledCoins;
+    let purchasedDevName = '';
+
+    const nextDevelopments = aiState.developments.map((d) => {
+      if (d.purchased || purchasedDevName) return d;
+
+      // Calculate total spending power of remaining goods
+      const goodsValueSum =
+        tempResources.wood * 1 +
+        tempResources.stone * 2 +
+        tempResources.pottery * 3 +
+        tempResources.cloth * 4 +
+        tempResources.spear * 5;
+
+      const totalAffordableValue = coins + goodsValueSum;
+      if (totalAffordableValue >= d.cost) {
+        purchasedDevName = d.name;
+        logs.push(`Purchased ${d.name} development!`);
+
+        let costRemaining = d.cost;
+        if (coins >= costRemaining) {
+          coins -= costRemaining;
+          costRemaining = 0;
+        } else {
+          costRemaining -= coins;
+          coins = 0;
+
+          const goodTypesSorted: Array<keyof ResourceState> = ['spear', 'cloth', 'pottery', 'stone', 'wood'];
+          const goodValues = { wood: 1, stone: 2, pottery: 3, cloth: 4, spear: 5 };
+
+          for (const gt of goodTypesSorted) {
+            if (costRemaining <= 0) break;
+            const goodCount = tempResources[gt];
+            if (goodCount > 0) {
+              const goodValue = goodCount * goodValues[gt];
+              costRemaining -= goodValue;
+              tempResources[gt] = 0;
+            }
+          }
+        }
+        return { ...d, purchased: true };
+      }
+      return d;
+    });
+
+    // Discard Phase
+    const aiHasCaravans = nextDevelopments.find((d) => d.id === 'caravans')?.purchased;
+    const totalG = tempResources.wood + tempResources.stone + tempResources.pottery + tempResources.cloth + tempResources.spear;
+    if (totalG > 6 && !aiHasCaravans) {
+      let excess = totalG - 6;
+      const goodTypesAsc: Array<keyof ResourceState> = ['wood', 'stone', 'pottery', 'cloth', 'spear'];
+      for (const gt of goodTypesAsc) {
+        if (excess <= 0) break;
+        const count = tempResources[gt];
+        if (count > 0) {
+          const discardCount = Math.min(excess, count);
+          tempResources[gt] -= discardCount;
+          excess -= discardCount;
+        }
+      }
+      logs.push(`Discarded excess goods down to storage limit of 6.`);
+    }
+
+    // Compute scores
+    const newAIScore = computeScore({
+      ...sourceState,
+      monuments: nextMonuments,
+      developments: nextDevelopments,
+      cities: {
+        count: currentCitiesCount,
+        progress: currentCitiesProgress,
+      },
+      disasterPoints: nextAIDisasterPoints,
+    });
+
+    const updatedAIState = {
+      ...aiState,
+      resources: tempResources,
+      cities: {
+        count: currentCitiesCount,
+        progress: currentCitiesProgress,
+      },
+      monuments: nextMonuments,
+      developments: nextDevelopments,
+      disasterPoints: nextAIDisasterPoints,
+      score: newAIScore,
+      history: [...logs, ...aiState.history],
+    };
+
+    const nextTurnCount = sourceState.turn + 1;
+    const updatedHumanMonuments = activePlayerState.monuments.map((m) => {
+      if (completedMonumentIdsThisTurn.includes(m.id)) {
         return { ...m, completedByAI: true };
       }
       return m;
     });
 
-    if (!logMessage) {
-      logMessage = `${selectedRival} is gathering resources in regional outposts. Your monuments remain safe for now.`;
-    }
+    const player1Score = computeScore({
+      ...sourceState,
+      monuments: updatedHumanMonuments,
+      developments: activePlayerState.developments,
+      cities: activePlayerState.cities,
+      disasterPoints: activePlayerDisasterPoints,
+      resources: activePlayerResources,
+    });
 
-    const nextTurnCount = sourceState.turn + 1;
+    const updatedHumanState = {
+      ...activePlayerState,
+      monuments: updatedHumanMonuments,
+      disasterPoints: activePlayerDisasterPoints,
+      resources: activePlayerResources,
+      score: player1Score,
+    };
+
+    const intermediateState: GameState = {
+      ...sourceState,
+      playerStates: [updatedHumanState, updatedAIState],
+    };
+
+    const gameCheck = checkIsGameOver(intermediateState);
+    if (gameCheck.ended) {
+      const finalState: GameState = {
+        ...intermediateState,
+        phase: 'end',
+        recentStatus: `Game Over! ${gameCheck.reason}`,
+      };
+      setPendingNextState(finalState);
+      setRivalTurnLogs(logs);
+      setTimeout(() => {
+        setAiProcessing(false);
+      }, 2000);
+      return;
+    }
 
     const nextState: GameState = {
       ...sourceState,
       turn: nextTurnCount,
       phase: 'roll',
       rollsLeft: 3,
-      monuments: nextMonuments,
+      monuments: updatedHumanMonuments,
       workers: 0,
       coins: 0,
       boughtDevelopmentThisTurn: false,
-      recentStatus: `Turn {${nextTurnCount}} started. Rival turn: ${logMessage}`,
+      playerStates: [updatedHumanState, updatedAIState],
+      resources: activePlayerResources,
+      disasterPoints: activePlayerDisasterPoints,
+      score: player1Score,
+      recentStatus: `Turn ${nextTurnCount} started. Rival turn completed!`,
       history: [
         `Turn ${nextTurnCount}: New round started. Roll Phase.`,
-        `Rival Action: ${logMessage}`,
+        ...logs.map(l => `Rival: ${l}`),
         ...sourceState.history,
       ],
     };
 
-    updateGameState(nextState);
-    setHasRerolledSkullThisTurn(false);
-    generateStartingDice(nextState.cities.count);
+    setPendingNextState(nextState);
+    setRivalTurnLogs(logs);
+
+    setTimeout(() => {
+      setAiProcessing(false);
+    }, 2000);
   };
 
   if (!gameState.setupCompleted) {
@@ -1368,6 +1937,130 @@ export default function App() {
           </div>
 
 
+        </div>
+      </main>
+    );
+  }
+
+  if (gameState.phase === 'end') {
+    const standings = getGameOverStandings();
+    const isSolo = gameState.gameMode === 'solo';
+    const isRivalWinner = standings[0]?.name === 'Rival AI';
+
+    return (
+      <main className="w-full h-full relative p-4 flex flex-col justify-center items-center min-h-screen texture-wood font-sans">
+        <div className="texture-parchment max-w-2xl w-full rounded-[1.5rem] p-4 md:p-5 border border-outline shadow-2xl relative flex flex-col gap-4 text-on-primary-fixed">
+          {/* Decorative Corners */}
+          <div className="absolute top-4 left-4 w-4 h-4 border-t-2 border-l-2 border-outline-variant/30 pointer-events-none rounded-tl-lg" />
+          <div className="absolute top-4 right-4 w-4 h-4 border-t-2 border-r-2 border-outline-variant/30 pointer-events-none rounded-tr-lg" />
+          <div className="absolute bottom-4 left-4 w-4 h-4 border-b-2 border-l-2 border-outline-variant/30 pointer-events-none rounded-bl-lg" />
+          <div className="absolute bottom-4 right-4 w-4 h-4 border-b-2 border-r-2 border-outline-variant/30 pointer-events-none rounded-br-lg" />
+
+          <div className="text-center">
+            <h1 className="font-serif text-2xl md:text-3xl font-extrabold tracking-tight uppercase leading-none text-amber-950 flex items-center justify-center gap-1.5">
+              👑 {isRivalWinner ? "Rival Empire Triumphant" : "Player Empire Triumphant"} 👑
+            </h1>
+            <p className="font-label text-[9px] font-bold text-on-tertiary-fixed/60 uppercase tracking-widest mt-1">
+              Annals of the Alea Imperii
+            </p>
+          </div>
+
+          {/* Reason Card */}
+          <div className="p-2.5 bg-amber-950/5 border border-amber-900/10 rounded-xl text-center shadow-inner">
+            <span className="font-label text-[8px] font-bold text-amber-900 uppercase tracking-wider block leading-none mb-0.5">
+              Trigger Event
+            </span>
+            <p className="text-xs font-serif italic font-bold text-amber-950">
+              {gameState.recentStatus.replace("Game Over! ", "")}
+            </p>
+          </div>
+
+          {/* Standings list */}
+          <div className="flex flex-col gap-2">
+            <h3 className="font-serif text-sm font-bold text-amber-950 border-b border-outline-variant/25 pb-1">
+              🏆 Final Standings
+            </h3>
+            <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto pr-0.5">
+              {standings.map((p, idx) => {
+                const isWinner = idx === 0;
+                let trophy = '🥉';
+                if (idx === 0) trophy = '🏆';
+                else if (idx === 1) trophy = '🥈';
+
+                // Solo rank evaluation
+                let rankLabel = "";
+                if (isSolo) {
+                  if (p.score >= 40) rankLabel = "Grand Emperor of the Ages (Legendary!)";
+                  else if (p.score >= 30) rankLabel = "Enlightened Monarch";
+                  else if (p.score >= 20) rankLabel = "Resolute Patrician";
+                  else rankLabel = "Humble Tribune (Novice Rank)";
+                }
+
+                const hasAchievements = p.monuments.some(m => m.completedByPlayer) || p.developments.some(d => d.purchased);
+
+                return (
+                  <div
+                    key={idx}
+                    className={`p-3 rounded-xl border flex flex-col gap-2 transition-all ${
+                      isWinner
+                        ? 'bg-amber-900/10 border-amber-800 shadow-sm'
+                        : 'bg-surface-container-lowest/5 border-on-tertiary-fixed/10'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-xl">{trophy}</span>
+                        <div className="flex flex-col">
+                          <span className="font-serif font-bold text-sm text-amber-950">
+                            {p.name} {isWinner && !isSolo && <span className="text-[9px] text-green-700 bg-green-100 px-1 py-0.2 rounded font-sans font-bold uppercase ml-1">Winner</span>}
+                          </span>
+                          {isSolo ? (
+                            <span className="text-[9px] text-amber-800 font-semibold italic">
+                              {rankLabel}
+                            </span>
+                          ) : (
+                            <span className="text-[9px] text-on-tertiary-fixed/60">
+                              {p.citiesCount} Cities • {p.disasterPoints} Disaster Points
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-baseline gap-0.5 shrink-0">
+                        <span className="text-xl font-serif font-black text-amber-950">{p.score}</span>
+                        <span className="text-[9px] uppercase font-bold text-amber-900 font-label">pts</span>
+                      </div>
+                    </div>
+
+                    {/* Compact Inline Achievements */}
+                    {hasAchievements && (
+                      <div className="flex flex-wrap gap-1 border-t border-on-tertiary-fixed/5 pt-1.5">
+                        {p.monuments.filter(m => m.completedByPlayer).map((m, mIdx) => (
+                          <span key={mIdx} className="bg-amber-900/5 text-amber-900 border border-amber-900/15 px-1.5 py-0.5 rounded text-[8px] font-sans font-bold uppercase tracking-tight">
+                            🏛️ {m.name}
+                          </span>
+                        ))}
+                        {p.developments.filter(d => d.purchased).map((d, dIdx) => (
+                          <span key={dIdx} className="bg-amber-950/5 text-amber-900 border border-amber-955/15 px-1.5 py-0.5 rounded text-[8px] font-sans font-bold uppercase tracking-tight">
+                            📜 {d.name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="mt-1.5 flex justify-center">
+            <button
+              onClick={handleForceRestart}
+              className="px-6 py-2.5 bg-amber-800 hover:bg-amber-900 text-white hover:text-white rounded-xl font-serif text-sm font-bold transition-all shadow-md select-none flex items-center justify-center gap-2 uppercase tracking-wide cursor-pointer active:scale-98 animate-pulse"
+            >
+              🔄 Rebuild Another Empire
+            </button>
+          </div>
         </div>
       </main>
     );
@@ -1737,6 +2430,98 @@ export default function App() {
         gameState={gameState}
         onClose={() => setIsStatusOpen(false)}
       />
+
+      {/* Rival AI Turn Thinking Overlay */}
+      <AnimatePresence>
+        {isRivalThinking && (
+          <div className="fixed inset-0 bg-black/75 backdrop-blur-md flex items-center justify-center z-[900] p-4 select-none">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="w-full max-w-lg texture-parchment border-2 border-amber-950/40 rounded-[2rem] p-6 md:p-8 shadow-2xl relative overflow-hidden flex flex-col gap-5 border-opacity-40 animate-scale-up"
+            >
+              {/* Decorative Corners */}
+              <div className="absolute top-4 left-4 w-6 h-6 border-t-2 border-l-2 border-outline-variant/30 pointer-events-none rounded-tl" />
+              <div className="absolute top-4 right-4 w-6 h-6 border-t-2 border-r-2 border-outline-variant/30 pointer-events-none rounded-tr" />
+              <div className="absolute bottom-4 left-4 w-6 h-6 border-b-2 border-l-2 border-outline-variant/30 pointer-events-none rounded-bl" />
+              <div className="absolute bottom-4 right-4 w-6 h-6 border-b-2 border-r-2 border-outline-variant/30 pointer-events-none rounded-br" />
+
+              <div className="flex flex-col items-center justify-center py-2 relative">
+                {/* Outer Glow */}
+                <div className="absolute inset-0 bg-amber-500/5 blur-xl rounded-full" />
+                {/* Rotating Hourglass */}
+                <motion.div
+                  animate={aiProcessing ? { rotate: 360 } : { rotate: 0 }}
+                  transition={{ repeat: aiProcessing ? Infinity : 0, duration: 2.5, ease: "linear" }}
+                  className="w-16 h-16 rounded-full border border-amber-900/30 bg-amber-950/5 flex items-center justify-center shadow-inner relative z-10"
+                >
+                  <span className="text-3xl text-amber-800">⏳</span>
+                </motion.div>
+              </div>
+
+              <div className="text-center space-y-1">
+                <h3 className="font-serif text-xl md:text-2xl font-bold text-amber-950 uppercase tracking-wide">
+                  Rival Turn Resolution
+                </h3>
+                <p className="font-sans text-xs md:text-sm text-on-primary-fixed/80 italic font-semibold max-w-md mx-auto">
+                  {aiProcessing 
+                    ? "The Rival is planning their expansion, rolling dice, building cities, and purchasing developments..." 
+                    : "The Rival has finished their turn! Review their actions below."}
+                </p>
+              </div>
+
+              {/* Console annals log */}
+              <div className="flex-1 overflow-y-auto max-h-[220px] border border-amber-950/20 bg-amber-950/10 rounded-xl p-4 font-mono text-[11px] text-amber-950/90 leading-relaxed shadow-inner">
+                <div className="font-semibold text-center border-b border-amber-900/10 pb-1.5 mb-2 uppercase tracking-widest text-[9px]">
+                  📜 Rival Annals of this Turn
+                </div>
+                {rivalTurnLogs.length === 0 ? (
+                  <div className="text-center italic opacity-60 animate-pulse py-4">
+                    Consulting regional advisors...
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {rivalTurnLogs.map((log, idx) => (
+                      <div key={idx} className="border-b border-amber-950/5 pb-1 flex gap-2">
+                        <span className="text-amber-800">✦</span>
+                        <span>{log}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-2">
+                {aiProcessing ? (
+                  <div className="w-full py-3.5 bg-amber-950/10 border border-amber-950/20 text-on-primary-fixed rounded-xl font-serif text-xs font-bold text-center tracking-widest uppercase animate-pulse">
+                    ⚡ Simulating Opponent Strategy ⚡
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => {
+                      audio.playChime();
+                      if (pendingNextState) {
+                        setGameState(pendingNextState);
+                        saveState(pendingNextState);
+                        setHasRerolledSkullThisTurn(false);
+                        if (pendingNextState.phase !== 'end') {
+                          generateStartingDice(pendingNextState.cities.count);
+                        }
+                      }
+                      setIsRivalThinking(false);
+                      setPendingNextState(null);
+                    }}
+                    className="w-full py-3 bg-amber-800 hover:bg-amber-900 text-white rounded-xl font-serif text-xs font-bold transition-all shadow-md select-none uppercase tracking-widest cursor-pointer active:scale-95 flex items-center justify-center gap-2 hover:scale-[1.02]"
+                  >
+                    {pendingNextState?.phase === 'end' ? "View Game Over Standings 🏆" : "Begin Your Next Turn →"}
+                  </button>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Custom Parchment Modal Dialog overlay */}
       {modal && (
