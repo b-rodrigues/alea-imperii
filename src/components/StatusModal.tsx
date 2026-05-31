@@ -161,6 +161,140 @@ export default function StatusModal({ isOpen, gameState, onClose }: StatusModalP
                 </div>
               </div>
             </div>
+
+            {/* Active Game Modifiers */}
+            {gameState.modifiers && (
+              <div className="p-3 bg-surface-container-lowest/5 rounded-xl border border-on-tertiary-fixed/10 font-sans mt-2 text-on-primary-fixed">
+                <h4 className="text-[10px] font-bold text-amber-950 mb-1.5 uppercase tracking-wider">
+                  ⚙️ Active Modifiers
+                </h4>
+                <div className="flex flex-wrap gap-1">
+                  {/* Modifier 1: Developments to finish */}
+                  <span className="bg-amber-950/20 text-on-primary-fixed border border-amber-900/30 rounded-full px-2 py-0.5 text-[9px] font-bold font-mono">
+                    Target: {gameState.modifiers.requiredDevelopmentsToFinish ?? 5} Devs
+                  </span>
+                  
+                  {/* Modifier 2: Unlimited disasters */}
+                  {gameState.modifiers.unlimitedDisasters && (
+                    <span className="bg-orange-950/20 text-on-primary-fixed border border-orange-900/30 rounded-full px-2 py-0.5 text-[9px] font-bold font-mono">
+                      Hardened Disasters
+                    </span>
+                  )}
+
+                  {/* Modifier 3: Start with all cities */}
+                  {gameState.modifiers.startWithAllCities && (
+                    <span className="bg-amber-950/20 text-on-primary-fixed border border-amber-900/30 rounded-full px-2 py-0.5 text-[9px] font-bold font-mono">
+                      Start: All 7 Cities
+                    </span>
+                  )}
+
+                  {/* Modifier 4: Banking active */}
+                  {gameState.modifiers.enableBanking && (
+                    <span className="bg-yellow-950/20 text-on-primary-fixed border border-yellow-900/30 rounded-full px-2 py-0.5 text-[9px] font-bold font-mono">
+                      Banking Enabled
+                    </span>
+                  )}
+
+                  {/* Modifier 5: Starting developments */}
+                  {gameState.modifiers.startingDevelopments && gameState.modifiers.startingDevelopments.length > 0 && (
+                    <span className="bg-amber-950/20 text-on-primary-fixed border border-amber-900/30 rounded-full px-2 py-0.5 text-[9px] font-bold font-mono">
+                      Starting Pack: +{gameState.modifiers.startingDevelopments.length} Devs
+                    </span>
+                  )}
+
+                  {/* Modifier: Extra Reroll */}
+                  {gameState.modifiers.extraReroll && (
+                    <span className="bg-amber-950/20 text-on-primary-fixed border border-amber-900/30 rounded-full px-2 py-0.5 text-[9px] font-bold font-mono">
+                      Extra Reroll (4 Rolls)
+                    </span>
+                  )}
+
+                  {/* Modifier: Loaded Dice (Workers) */}
+                  {gameState.modifiers.loadedDiceWorkers && (
+                    <span className="bg-amber-950/20 text-on-primary-fixed border border-amber-900/30 rounded-full px-2 py-0.5 text-[9px] font-bold font-mono">
+                      Loaded Workers
+                    </span>
+                  )}
+
+                  {/* Modifier: Loaded Dice (Coins) */}
+                  {gameState.modifiers.loadedDiceCoins && (
+                    <span className="bg-amber-950/20 text-on-primary-fixed border border-amber-900/30 rounded-full px-2 py-0.5 text-[9px] font-bold font-mono">
+                      Loaded Coins
+                    </span>
+                  )}
+
+                  {/* Modifier: Generous Steppes */}
+                  {gameState.modifiers.generousSteppes && (
+                    <span className="bg-amber-950/20 text-on-primary-fixed border border-amber-900/30 rounded-full px-2 py-0.5 text-[9px] font-bold font-mono">
+                      Generous Steppes (+Resource Start)
+                    </span>
+                  )}
+
+                  {/* Modifier: Guild Taxation */}
+                  {gameState.modifiers.guildTaxation && (
+                    <span className="bg-amber-950/20 text-on-primary-fixed border border-amber-900/30 rounded-full px-2 py-0.5 text-[9px] font-bold font-mono">
+                      Guild Taxation
+                    </span>
+                  )}
+
+                  {/* Modifier: Ruthless AI */}
+                  {gameState.modifiers.ruthlessAI && (
+                    <span className="bg-red-950/20 text-on-primary-fixed border border-red-900/30 rounded-full px-2 py-0.5 text-[9px] font-bold font-mono">
+                      Ruthless AI (+20% Score)
+                    </span>
+                  )}
+
+                  {/* Modifier: Plague & Desolation */}
+                  {gameState.modifiers.plagueDesolation && (
+                    <span className="bg-red-950/20 text-on-primary-fixed border border-red-900/30 rounded-full px-2 py-0.5 text-[9px] font-bold font-mono">
+                      Plague & Desolation
+                    </span>
+                  )}
+
+                  {/* Modifier: Volatile World */}
+                  {gameState.modifiers.volatileWorld && (
+                    <span className="bg-orange-950/20 text-on-primary-fixed border border-orange-900/30 rounded-full px-2 py-0.5 text-[9px] font-bold font-mono">
+                      Volatile World
+                    </span>
+                  )}
+
+                  {/* Modifier: Solitaire Round Limit */}
+                  {gameState.gameMode === 'solo' && gameState.modifiers.solitaireRoundLimit !== undefined && gameState.modifiers.solitaireRoundLimit !== 10 && (
+                    <span className="bg-amber-950/20 text-on-primary-fixed border border-amber-900/30 rounded-full px-2 py-0.5 text-[9px] font-bold font-mono">
+                      Solo Limit: {gameState.modifiers.solitaireRoundLimit} Rounds
+                    </span>
+                  )}
+
+                  {/* Modifier: Architectural Hegemony */}
+                  {gameState.modifiers.architecturalHegemony && (
+                    <span className="bg-amber-950/20 text-on-primary-fixed border border-amber-900/30 rounded-full px-2 py-0.5 text-[9px] font-bold font-mono">
+                      Architectural Hegemony
+                    </span>
+                  )}
+                  
+                  {/* If no custom modifiers enabled */}
+                  {(!gameState.modifiers.unlimitedDisasters &&
+                    !gameState.modifiers.startWithAllCities &&
+                    !gameState.modifiers.enableBanking &&
+                    !gameState.modifiers.extraReroll &&
+                    !gameState.modifiers.loadedDiceWorkers &&
+                    !gameState.modifiers.loadedDiceCoins &&
+                    !gameState.modifiers.generousSteppes &&
+                    !gameState.modifiers.guildTaxation &&
+                    !gameState.modifiers.ruthlessAI &&
+                    !gameState.modifiers.plagueDesolation &&
+                    !gameState.modifiers.volatileWorld &&
+                    !gameState.modifiers.architecturalHegemony &&
+                    (gameState.gameMode !== 'solo' || gameState.modifiers.solitaireRoundLimit === 10 || gameState.modifiers.solitaireRoundLimit === undefined) &&
+                    (!gameState.modifiers.startingDevelopments || gameState.modifiers.startingDevelopments.length === 0) &&
+                    (gameState.modifiers.requiredDevelopmentsToFinish === 5 || !gameState.modifiers.requiredDevelopmentsToFinish)) && (
+                      <span className="text-[10px] text-on-primary-fixed/40 italic">
+                        Standard rules active.
+                      </span>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Action Log History */}

@@ -32,7 +32,7 @@ export default function ScoreSheet({
 
   // Split developments into the 3 columns per rules
   const col1Ids = ['leadership', 'irrigation', 'agriculture', 'quarrying', 'medicine'];
-  const col2Ids = ['coinage', 'caravans', 'religion', 'granaries'];
+  const col2Ids = ['coinage', 'caravans', 'religion', 'granaries', 'banking'];
   const col3Ids = ['masonry', 'engineering', 'architecture', 'empire'];
 
   const col1 = gameState.developments.filter((d) => col1Ids.includes(d.id));
@@ -214,12 +214,25 @@ export default function ScoreSheet({
 
             {/* Disasters Section (charcoal cross off) */}
             <section className="bg-error-container bg-opacity-10 p-2 rounded-lg border border-error-container border-opacity-20">
-              <h3 className="font-serif text-xs md:text-sm text-red-900 mb-1 flex items-center gap-1 select-none font-bold">
-                <Skull size={13} className="text-red-800" /> Disaster Ledger
-              </h3>
+              <div className="flex items-center justify-between gap-2 mb-1 select-none">
+                <h3 className="font-serif text-xs md:text-sm text-red-900 flex items-center gap-1 font-bold">
+                  <Skull size={13} className="text-red-800" /> Disaster Ledger
+                </h3>
+                {gameState.modifiers?.unlimitedDisasters && Math.floor(gameState.disasterPoints / 10) > 0 && (
+                  <div className="flex gap-0.5">
+                    {Array.from({ length: Math.floor(gameState.disasterPoints / 10) }).map((_, i) => (
+                      <span key={i} className="bg-red-950 text-white text-[8px] font-sans font-bold px-1 py-0.2 rounded border border-red-900 shadow-sm" title="Accumulated -10 Disaster Points Notch">
+                        -10
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
               <div className="flex gap-0.5 flex-wrap select-none">
                 {disasterIndexList.map((idx) => {
-                  const isChecked = gameState.disasterPoints >= idx;
+                  const isChecked = gameState.modifiers?.unlimitedDisasters
+                    ? (gameState.disasterPoints % 10) >= idx
+                    : gameState.disasterPoints >= idx;
                   return (
                     <div
                       key={idx}
@@ -242,7 +255,9 @@ export default function ScoreSheet({
                 })}
               </div>
               <p className="text-[8px] text-red-950/80 mt-0.5 leading-snug font-sans select-none">
-                Starvation or unmitigated skulls automatically mark nodes on this track.
+                {gameState.modifiers?.unlimitedDisasters 
+                  ? `Accumulated: -${gameState.disasterPoints} total disaster points.`
+                  : "Starvation or unmitigated skulls automatically mark nodes on this track."}
               </p>
             </section>
           </section>

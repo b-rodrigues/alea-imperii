@@ -34,6 +34,24 @@ export interface Development {
   effect: string;
 }
 
+export interface GameModifiers {
+  requiredDevelopmentsToFinish: number;
+  unlimitedDisasters: boolean;
+  startingDevelopments: string[];
+  enableBanking: boolean;
+  startWithAllCities: boolean;
+  extraReroll?: boolean;
+  loadedDiceWorkers?: boolean;
+  loadedDiceCoins?: boolean;
+  generousSteppes?: boolean;
+  guildTaxation?: boolean;
+  ruthlessAI?: boolean;
+  plagueDesolation?: boolean;
+  volatileWorld?: boolean;
+  solitaireRoundLimit?: number;
+  architecturalHegemony?: boolean;
+}
+
 export interface GameState {
   turn: number;
   gameMode?: 'solo' | 'solo_ai' | 'hotseat';
@@ -77,4 +95,5 @@ export interface GameState {
     coins: number;
     boughtDevelopmentThisTurn?: boolean;
   }>;
+  modifiers?: GameModifiers;
 }

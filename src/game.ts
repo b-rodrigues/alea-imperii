@@ -199,7 +199,8 @@ export const calculateScore = (state: GameState): number => {
     ? state.cities
     : 0
 
-  return devPoints + monPoints + architectureBonus + empireBonus - state.disasterPoints
+  const penaltyFactor = state.modifiers?.plagueDesolation ? 2 : 1
+  return devPoints + monPoints + architectureBonus + empireBonus - (state.disasterPoints * penaltyFactor)
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -207,15 +208,22 @@ export const calculateScore = (state: GameState): number => {
 // ────────────────────────────────────────────────────────────────
 
 const checkGameEnd = (state: GameState): boolean => {
-  const ownedDevs = state.developments.filter((d) => d.owned).length
-  if (ownedDevs >= 5) return true
+  if (state.modifiers?.architecturalHegemony) {
+    const allCompleted = state.monuments.every((m) => m.completedByPlayer || m.firstClaimed)
+    if (allCompleted) return true
+  } else {
+    const reqDevs = state.modifiers?.requiredDevelopmentsToFinish ?? 5
+    const ownedDevs = state.developments.filter((d) => d.owned).length
+    if (ownedDevs >= reqDevs) return true
 
-  // All active monuments completed at least once
-  const allCompleted = state.monuments.every((m) => m.completedByPlayer || m.firstClaimed)
-  if (allCompleted) return true
+    // All active monuments completed at least once
+    const allCompleted = state.monuments.every((m) => m.completedByPlayer || m.firstClaimed)
+    if (allCompleted) return true
+  }
 
-  // Solitaire: 10 rounds
-  if (state.turn > 10) return true
+  // Solitaire turn limit
+  const roundLimit = state.modifiers?.solitaireRoundLimit ?? 10
+  if (state.turn > roundLimit) return true
 
   return false
 }
@@ -1193,9 +1201,12 @@ function resolveCollection(state: GameState): GameState {
         }
         break
       }
-      case 'coins7':
-        coinsGained += hasDevelopment(state, 'coinage') ? 12 : 7
+      case 'coins7': {
+        const base = hasDevelopment(state, 'coinage') ? 12 : 7
+        const bonus = state.modifiers?.loadedDiceCoins ? 1 : 0
+        coinsGained += base + bonus
         break
+      }
     }
   })
 
@@ -1206,6 +1217,11 @@ function resolveCollection(state: GameState): GameState {
 
   // Masonry: +1 worker per worker-face die
   if (hasDevelopment(state, 'masonry')) {
+    workersGained += workerDiceCount
+  }
+
+  // Loaded Dice - Workers: +1 worker per worker die
+  if (state.modifiers?.loadedDiceWorkers) {
     workersGained += workerDiceCount
   }
 
@@ -1245,6 +1261,7 @@ function feedAndDisaster(state: GameState): GameState {
   let nextFood = state.food
   let disasterGained = 0
   const messages: string[] = []
+  let anyDisasterTriggered = false
 
   // Feeding
   if (nextFood >= requiredFood) {
@@ -1252,9 +1269,12 @@ function feedAndDisaster(state: GameState): GameState {
     messages.push(`Fed ${requiredFood} cities.`)
   } else {
     const unfed = requiredFood - nextFood
-    disasterGained += unfed // -1 per unfed city (Famine)
+    const multiplier = state.modifiers?.plagueDesolation ? 2 : 1
+    const penalty = unfed * multiplier
+    disasterGained += penalty
     nextFood = 0
-    messages.push(`Famine! ${unfed} unfed cities: -${unfed} disaster points.`)
+    anyDisasterTriggered = true
+    messages.push(`Famine! ${unfed} unfed cities: -${penalty} disaster points.`)
   }
 
   // Disasters based on skull count
@@ -1262,6 +1282,7 @@ function feedAndDisaster(state: GameState): GameState {
 
   if (state.skulls >= 2 && !hasDevelopment(state, 'irrigation')) {
     disasterGained += 2
+    anyDisasterTriggered = true
     messages.push('Drought: -2 points.')
   }
 
@@ -1269,6 +1290,7 @@ function feedAndDisaster(state: GameState): GameState {
     // Pestilence: in solitaire, affects self unless Medicine
     if (!hasDevelopment(state, 'medicine')) {
       disasterGained += 3
+      anyDisasterTriggered = true
       messages.push('Pestilence: -3 points.')
     }
   }
@@ -1287,6 +1309,18 @@ function feedAndDisaster(state: GameState): GameState {
     if (!hasDevelopment(state, 'religion')) {
       nextGoods = clearAllGoods()
       messages.push('Revolt: lost all goods!')
+    }
+  }
+
+  // Volatile World Good Destruction
+  if (state.modifiers?.volatileWorld && anyDisasterTriggered) {
+    const activeKeys = (Object.keys(nextGoods) as Array<keyof ResourceState>).filter(
+      (k) => k !== 'food' && nextGoods[k] > 0
+    )
+    if (activeKeys.length > 0) {
+      const chosen = activeKeys[Math.floor(Math.random() * activeKeys.length)]
+      nextGoods[chosen] = nextGoods[chosen] - 1
+      messages.push(`Volatile World: Lost 1 ${chosen} to disaster.`)
     }
   }
 

@@ -5,7 +5,7 @@ import {
   AlertTriangle,
   ArrowRight
 } from 'lucide-react';
-import type { GameState, Die, ResourceState, Development } from './types';
+import type { GameState, Die, ResourceState, Development, GameModifiers } from './types';
 import { getStartingState, getResourceLimits } from './utils/gameDefaults';
 import audio from './utils/audio';
 
@@ -21,6 +21,26 @@ export default function App() {
   // Master Game State
   const [gameState, setGameState] = useState<GameState>(getStartingState());
   const [dice, setDice] = useState<Die[]>([]);
+
+  // Game Custom Modifiers
+  const [showModifiersModal, setShowModifiersModal] = useState(false);
+  const [customModifiers, setCustomModifiers] = useState<GameModifiers>({
+    requiredDevelopmentsToFinish: 5,
+    unlimitedDisasters: false,
+    startingDevelopments: [],
+    enableBanking: false,
+    startWithAllCities: false,
+    extraReroll: false,
+    loadedDiceWorkers: false,
+    loadedDiceCoins: false,
+    generousSteppes: false,
+    guildTaxation: false,
+    ruthlessAI: false,
+    plagueDesolation: false,
+    volatileWorld: false,
+    solitaireRoundLimit: 10,
+    architecturalHegemony: false,
+  });
 
   // UI Modals
   const [isRulesOpen, setIsRulesOpen] = useState(false);
@@ -166,7 +186,8 @@ export default function App() {
     const citySize = state.cities.count;
     const empireBonus = hasEmpire ? citySize * 2 : 0;
 
-    return monPts + devPts + educationBonus + empireBonus - state.disasterPoints;
+    const penaltyFactor = state.modifiers?.plagueDesolation ? 2 : 1;
+    return monPts + devPts + educationBonus + empireBonus - (state.disasterPoints * penaltyFactor);
   };
 
   // Unified Game State Updater that also keeps playerStates in sync
@@ -198,7 +219,7 @@ export default function App() {
     if (!gameState.isMuted) {
       audio.startMusic();
     }
-    const fresh = { ...getStartingState(), isMuted: gameState.isMuted };
+    const fresh = { ...getStartingState(customModifiers), isMuted: gameState.isMuted };
 
     if (mode === 'solo') {
       const nextState: GameState = {
@@ -215,7 +236,7 @@ export default function App() {
       generateStartingDice(nextState.cities.count);
     } else if (mode === 'solo_ai') {
       const playerStates = Array.from({ length: 2 }).map((_, i) => {
-        const playerFresh = getStartingState();
+        const playerFresh = getStartingState(customModifiers);
         return {
           name: i === 0 ? 'Player 1 (You)' : 'AI Rival',
           resources: playerFresh.resources,
@@ -255,7 +276,7 @@ export default function App() {
     } else {
       const count = mode === 'hotseat_2' ? 2 : 3;
       const playerStates = Array.from({ length: count }).map((_, i) => {
-        const playerFresh = getStartingState();
+        const playerFresh = getStartingState(customModifiers);
         return {
           name: `Player ${i + 1}`,
           resources: playerFresh.resources,
@@ -340,6 +361,23 @@ export default function App() {
           activePlayerIndex: 0,
           playerStates: [],
         };
+        setCustomModifiers({
+          requiredDevelopmentsToFinish: 5,
+          unlimitedDisasters: false,
+          startingDevelopments: [],
+          enableBanking: false,
+          startWithAllCities: false,
+          extraReroll: false,
+          loadedDiceWorkers: false,
+          loadedDiceCoins: false,
+          generousSteppes: false,
+          guildTaxation: false,
+          ruthlessAI: false,
+          plagueDesolation: false,
+          volatileWorld: false,
+          solitaireRoundLimit: 10,
+          architecturalHegemony: false,
+        });
         setGameState(nextState);
         saveState(nextState);
         setHasRerolledSkullThisTurn(false);
@@ -358,6 +396,23 @@ export default function App() {
       activePlayerIndex: 0,
       playerStates: [],
     };
+    setCustomModifiers({
+      requiredDevelopmentsToFinish: 5,
+      unlimitedDisasters: false,
+      startingDevelopments: [],
+      enableBanking: false,
+      startWithAllCities: false,
+      extraReroll: false,
+      loadedDiceWorkers: false,
+      loadedDiceCoins: false,
+      generousSteppes: false,
+      guildTaxation: false,
+      ruthlessAI: false,
+      plagueDesolation: false,
+      volatileWorld: false,
+      solitaireRoundLimit: 10,
+      architecturalHegemony: false,
+    });
     setGameState(nextState);
     saveState(nextState);
     setHasRerolledSkullThisTurn(false);
@@ -692,6 +747,7 @@ export default function App() {
       // Epidemic, Invasion, Revolt affects other players (opponents)
       if (updatedPlayerStates) {
         const activeIdx = gameState.activePlayerIndex ?? 0;
+        const unlimited = gameState.modifiers?.unlimitedDisasters ?? false;
         updatedPlayerStates = updatedPlayerStates.map((playerState, idx) => {
           if (idx === activeIdx) return playerState; // Active player handled separately
 
@@ -702,7 +758,7 @@ export default function App() {
           if (summaryData.skullCount === 3) {
             const oppHasMedicine = playerState.developments.find((d) => d.id === 'medicine')?.purchased;
             if (!oppHasMedicine) {
-              opponentDisasterPts = Math.min(9, opponentDisasterPts + 3);
+              opponentDisasterPts = unlimited ? opponentDisasterPts + 3 : Math.min(9, opponentDisasterPts + 3);
               opponentHistory.unshift(`Suffer Epidemic from Player ${activeIdx + 1}'s skulls: +3 disaster points!`);
             } else {
               opponentHistory.unshift(`Epidemic from Player ${activeIdx + 1}'s skulls averted by Medicine.`);
@@ -710,7 +766,7 @@ export default function App() {
           } else if (summaryData.skullCount === 4) {
             const oppGreatWall = playerState.monuments.find((m) => m.id === 'great_wall')?.completedByPlayer;
             if (!oppGreatWall) {
-              opponentDisasterPts = Math.min(9, opponentDisasterPts + 4);
+              opponentDisasterPts = unlimited ? opponentDisasterPts + 4 : Math.min(9, opponentDisasterPts + 4);
               opponentHistory.unshift(`Suffer Invasion from Player ${activeIdx + 1}'s skulls: +4 disaster points!`);
             } else {
               opponentHistory.unshift(`Invasion from Player ${activeIdx + 1}'s skulls averted by Great Wall.`);
@@ -739,7 +795,10 @@ export default function App() {
       }
     }
 
-    const finalDisastersCount = Math.min(9, gameState.disasterPoints + activePlayerDisasterIncrement);
+    const unlimited = gameState.modifiers?.unlimitedDisasters ?? false;
+    const finalDisastersCount = unlimited
+      ? gameState.disasterPoints + activePlayerDisasterIncrement
+      : Math.min(9, gameState.disasterPoints + activePlayerDisasterIncrement);
 
     // Compute status log
     let reportLog = `Turn ${gameState.turn} Results: Gained +${totalFoodYield} Food, +${totalWorkersYield} Workers. `;
@@ -1333,27 +1392,31 @@ export default function App() {
       return { ended: true, reason: "All active monuments have been completed!" };
     }
 
-    // Condition 2: 5 developments purchased by any player
-    if (state.playerStates && state.playerStates.length > 0) {
-      for (let i = 0; i < state.playerStates.length; i++) {
-        const p = state.playerStates[i];
-        const numDevs = p.developments.filter(d => d.purchased).length;
-        if (numDevs >= 5) {
-          const playerName = state.gameMode === 'solo_ai' && i === 1 ? "Rival AI" : `Player ${i + 1}`;
-          return { ended: true, reason: `${playerName} purchased their 5th development!` };
+    // Condition 2: X developments purchased by any player (ignored if Architectural Hegemony is active)
+    if (!state.modifiers?.architecturalHegemony) {
+      const reqDevs = state.modifiers?.requiredDevelopmentsToFinish ?? 5;
+      if (state.playerStates && state.playerStates.length > 0) {
+        for (let i = 0; i < state.playerStates.length; i++) {
+          const p = state.playerStates[i];
+          const numDevs = p.developments.filter(d => d.purchased).length;
+          if (numDevs >= reqDevs) {
+            const playerName = state.gameMode === 'solo_ai' && i === 1 ? "Rival AI" : `Player ${i + 1}`;
+            return { ended: true, reason: `${playerName} purchased their ${reqDevs}th development!` };
+          }
         }
-      }
-    } else {
-      const numDevs = state.developments.filter(d => d.purchased).length;
-      if (numDevs >= 5) {
-        return { ended: true, reason: "You purchased your 5th development!" };
+      } else {
+        const numDevs = state.developments.filter(d => d.purchased).length;
+        if (numDevs >= reqDevs) {
+          return { ended: true, reason: `You purchased your ${reqDevs}th development!` };
+        }
       }
     }
 
-    // Condition 3: Solitaire Turn Limit (10 turns/rounds)
+    // Condition 3: Solitaire Turn Limit
     if (state.gameMode === 'solo') {
-      if (state.turn >= 10) {
-        return { ended: true, reason: "10 rounds have been completed!" };
+      const limit = state.modifiers?.solitaireRoundLimit ?? 10;
+      if (state.turn >= limit) {
+        return { ended: true, reason: `${limit} rounds have been completed!` };
       }
     }
 
@@ -1361,6 +1424,26 @@ export default function App() {
   };
 
   const proceedToEndTurn = (stateBeforeEnd: GameState) => {
+    const hasBanking = stateBeforeEnd.developments.find((d) => d.id === 'banking')?.purchased;
+    const unusedWorkerCoins = stateBeforeEnd.modifiers?.guildTaxation ? stateBeforeEnd.workers : 0;
+    const endCoins = stateBeforeEnd.coins + unusedWorkerCoins;
+    const interest = hasBanking ? Math.floor(endCoins / 10) : 0;
+    const nextCoins = hasBanking ? endCoins + interest : 0;
+
+    let activeHistory = [...stateBeforeEnd.history];
+    if (unusedWorkerCoins > 0) {
+      activeHistory = [
+        `Guild Taxation: Converted +${unusedWorkerCoins} unused workers to coins.`,
+        ...activeHistory
+      ];
+    }
+    if (hasBanking && interest > 0) {
+      activeHistory = [
+        `Gained +${interest} coins interest from Banking.`,
+        ...activeHistory
+      ];
+    }
+
     if (stateBeforeEnd.gameMode === 'hotseat' && stateBeforeEnd.playerStates) {
       const activeIdx = stateBeforeEnd.activePlayerIndex ?? 0;
       const pCount = stateBeforeEnd.playerCount ?? 2;
@@ -1374,9 +1457,9 @@ export default function App() {
         developments: stateBeforeEnd.developments,
         disasterPoints: stateBeforeEnd.disasterPoints,
         score: stateBeforeEnd.score,
-        history: stateBeforeEnd.history,
-        workers: stateBeforeEnd.workers,
-        coins: stateBeforeEnd.coins,
+        history: activeHistory,
+        workers: 0,
+        coins: nextCoins,
         boughtDevelopmentThisTurn: stateBeforeEnd.boughtDevelopmentThisTurn,
       };
 
@@ -1403,7 +1486,7 @@ export default function App() {
         ...stateBeforeEnd,
         turn: nextTurn,
         phase: 'roll',
-        rollsLeft: 3,
+        rollsLeft: stateBeforeEnd.modifiers?.extraReroll ? 4 : 3,
         activePlayerIndex: nextIdx,
         resources: nextPlayer.resources,
         cities: nextPlayer.cities,
@@ -1417,7 +1500,7 @@ export default function App() {
         ],
         recentStatus: `Player ${nextIdx + 1}'s turn begins. Roll the dice!`,
         workers: 0,
-        coins: 0,
+        coins: nextPlayer.coins ?? 0,
         boughtDevelopmentThisTurn: false,
       };
 
@@ -1426,7 +1509,32 @@ export default function App() {
       setHasRerolledSkullThisTurn(false);
       generateStartingDice(nextState.cities.count);
     } else if (stateBeforeEnd.gameMode === 'solo_ai') {
-      executeAITurn(stateBeforeEnd);
+      const activeIdx = 0;
+      const currentActiveState = stateBeforeEnd.playerStates ? stateBeforeEnd.playerStates[activeIdx] : null;
+      if (currentActiveState) {
+        const nextActivePlayerState = {
+          ...currentActiveState,
+          resources: stateBeforeEnd.resources,
+          cities: stateBeforeEnd.cities,
+          monuments: stateBeforeEnd.monuments,
+          developments: stateBeforeEnd.developments,
+          disasterPoints: stateBeforeEnd.disasterPoints,
+          score: stateBeforeEnd.score,
+          history: activeHistory,
+          workers: 0,
+          coins: nextCoins,
+          boughtDevelopmentThisTurn: stateBeforeEnd.boughtDevelopmentThisTurn,
+        };
+
+        const stateWithUpdatedHuman = {
+          ...stateBeforeEnd,
+          playerStates: [nextActivePlayerState, stateBeforeEnd.playerStates[1]],
+        };
+
+        executeAITurn(stateWithUpdatedHuman);
+      } else {
+        executeAITurn(stateBeforeEnd);
+      }
     } else {
       // Solo High Score Mode: check game over immediately
       const gameCheck = checkIsGameOver(stateBeforeEnd);
@@ -1446,14 +1554,16 @@ export default function App() {
         ...stateBeforeEnd,
         turn: nextTurnCount,
         phase: 'roll',
-        rollsLeft: 3,
+        rollsLeft: stateBeforeEnd.modifiers?.extraReroll ? 4 : 3,
         workers: 0,
-        coins: 0,
+        coins: nextCoins,
         boughtDevelopmentThisTurn: false,
-        recentStatus: `Round ${nextTurnCount} started. Roll the dice!`,
+        recentStatus: hasBanking && interest > 0 
+          ? `Round ${nextTurnCount} started. Gained +${interest} coins interest from Banking!`
+          : `Round ${nextTurnCount} started. Roll the dice!`,
         history: [
-          `Turn ${nextTurnCount}: New round started. Roll Phase.`,
-          ...stateBeforeEnd.history,
+          `Turn ${nextTurnCount}: New round started. Roll Phase.` + (interest > 0 ? ` (Gained +${interest} coins interest)` : ""),
+          ...activeHistory,
         ],
       };
 
@@ -1540,13 +1650,13 @@ export default function App() {
           skullCount += 1;
           break;
         case 'worker':
-          gainedWorkers += hasMasonry ? 4 : 3;
+          gainedWorkers += (hasMasonry ? 4 : 3) + (sourceState.modifiers?.loadedDiceWorkers ? 1 : 0);
           break;
         case 'food_or_worker':
           foodOrWorkerDiceCount += 1;
           break;
         case 'coin':
-          rolledCoins += hasCoinage ? 12 : 7;
+          rolledCoins += (hasCoinage ? 12 : 7) + (sourceState.modifiers?.loadedDiceCoins ? 1 : 0);
           break;
       }
     });
@@ -1561,7 +1671,7 @@ export default function App() {
       }
     }
     gainedFood += choiceFood * (hasAgriculture ? 3 : 2);
-    gainedWorkers += choiceWorkers * (hasMasonry ? 3 : 2);
+    gainedWorkers += choiceWorkers * ((hasMasonry ? 3 : 2) + (sourceState.modifiers?.loadedDiceWorkers ? 1 : 0));
 
     logs.push(`Rolled ${diceCount} dice: ` + keptDice.map((d) => d.toUpperCase()).join(", "));
     
@@ -1605,25 +1715,32 @@ export default function App() {
     let starvationPenalty = 0;
     let nextFood = Math.min(limits.food, tempResources.food + gainedFood);
     const requiredFood = aiState.cities.count;
+    let aiDisasterTriggered = false;
 
     if (nextFood >= requiredFood) {
       nextFood -= requiredFood;
       logs.push(`Fed ${requiredFood} cities with ${requiredFood} food.`);
     } else {
-      starvationPenalty = requiredFood - nextFood;
+      const unfed = requiredFood - nextFood;
+      const multiplier = sourceState.modifiers?.plagueDesolation ? 2 : 1;
+      starvationPenalty = unfed * multiplier;
       nextFood = 0;
-      logs.push(`Famine! ${starvationPenalty} unfed cities caused +${starvationPenalty} Disaster Points.`);
+      aiDisasterTriggered = true;
+      logs.push(`Famine! ${unfed} unfed cities caused +${starvationPenalty} Disaster Points.`);
     }
     tempResources.food = nextFood;
 
     // Disasters resolution
+    const unlimited = sourceState.modifiers?.unlimitedDisasters ?? false;
     let nextAIDisasterPoints = aiState.disasterPoints;
     let activePlayerState = { ...sourceState.playerStates[0] };
     let activePlayerDisasterPoints = sourceState.playerStates[0].disasterPoints;
     let activePlayerResources = { ...sourceState.playerStates[0].resources };
 
     if (starvationPenalty > 0) {
-      nextAIDisasterPoints = Math.min(9, nextAIDisasterPoints + starvationPenalty);
+      nextAIDisasterPoints = unlimited
+        ? nextAIDisasterPoints + starvationPenalty
+        : Math.min(9, nextAIDisasterPoints + starvationPenalty);
     }
 
     if (skullCount === 2) {
@@ -1631,7 +1748,10 @@ export default function App() {
       if (oppHasIrrigation) {
         logs.push(`Averted Drought with Irrigation!`);
       } else {
-        nextAIDisasterPoints = Math.min(9, nextAIDisasterPoints + 2);
+        nextAIDisasterPoints = unlimited
+          ? nextAIDisasterPoints + 2
+          : Math.min(9, nextAIDisasterPoints + 2);
+        aiDisasterTriggered = true;
         logs.push(`Suffered Drought: +2 disaster points.`);
       }
     } else if (skullCount === 3) {
@@ -1640,7 +1760,19 @@ export default function App() {
       if (playerHasMedicine) {
         logs.push(`Player averted Epidemic with Medicine.`);
       } else {
-        activePlayerDisasterPoints = Math.min(9, activePlayerDisasterPoints + 3);
+        activePlayerDisasterPoints = unlimited
+          ? activePlayerDisasterPoints + 3
+          : Math.min(9, activePlayerDisasterPoints + 3);
+        if (sourceState.modifiers?.volatileWorld) {
+          const activeKeys = (Object.keys(activePlayerResources) as Array<keyof ResourceState>).filter(
+            (k) => k !== 'food' && activePlayerResources[k] > 0
+          );
+          if (activeKeys.length > 0) {
+            const chosen = activeKeys[Math.floor(Math.random() * activeKeys.length)];
+            activePlayerResources[chosen] -= 1;
+            logs.push(`Volatile World: Player lost 1 ${chosen} to epidemic.`);
+          }
+        }
         logs.push(`Player suffered Epidemic: +3 disaster points.`);
       }
     } else if (skullCount === 4) {
@@ -1649,7 +1781,9 @@ export default function App() {
       if (playerGreatWall) {
         logs.push(`Player averted Invasion with Great Wall.`);
       } else {
-        activePlayerDisasterPoints = Math.min(9, activePlayerDisasterPoints + 4);
+        activePlayerDisasterPoints = unlimited
+          ? activePlayerDisasterPoints + 4
+          : Math.min(9, activePlayerDisasterPoints + 4);
         logs.push(`Player suffered Invasion: +4 disaster points.`);
       }
     } else if (skullCount >= 5) {
@@ -1664,6 +1798,18 @@ export default function App() {
         activePlayerResources.cloth = 0;
         activePlayerResources.spear = 0;
         logs.push(`Player suffered Revolt: lost all non-food goods.`);
+      }
+    }
+
+    // Volatile World Good Destruction for AI
+    if (sourceState.modifiers?.volatileWorld && aiDisasterTriggered) {
+      const activeKeys = (Object.keys(tempResources) as Array<keyof ResourceState>).filter(
+        (k) => k !== 'food' && tempResources[k] > 0
+      );
+      if (activeKeys.length > 0) {
+        const chosen = activeKeys[Math.floor(Math.random() * activeKeys.length)];
+        tempResources[chosen] -= 1;
+        logs.push(`Volatile World: AI Rival lost 1 ${chosen} to disaster.`);
       }
     }
 
@@ -1722,7 +1868,18 @@ export default function App() {
     const availableDevelopments = aiState.developments.filter((d) => !d.purchased);
     availableDevelopments.sort((a, b) => b.cost - a.cost);
 
-    let coins = rolledCoins;
+    let unusedTaxationCoins = 0;
+    if (sourceState.modifiers?.guildTaxation && remainingWorkers > 0) {
+      unusedTaxationCoins = remainingWorkers;
+      logs.push(`Guild Taxation: AI Rival converted +${unusedTaxationCoins} unused workers to coins.`);
+    }
+
+    const aiHasBanking = aiState.developments.find((d) => d.id === 'banking')?.purchased;
+    const aiStartingCoins = aiState.coins ?? 0;
+    let coins = rolledCoins + aiStartingCoins + unusedTaxationCoins;
+    if (aiHasBanking && aiStartingCoins > 0) {
+      logs.push(`AI Rival started build phase with ${aiStartingCoins} carried-over coins.`);
+    }
     let purchasedDevName = '';
 
     const nextDevelopments = aiState.developments.map((d) => {
@@ -1797,6 +1954,21 @@ export default function App() {
       disasterPoints: nextAIDisasterPoints,
     });
 
+    let finalAIScore = newAIScore;
+    if (sourceState.modifiers?.ruthlessAI) {
+      finalAIScore = Math.floor(newAIScore * 1.2);
+      logs.push(`Ruthless AI: Applied +20% score booster (+${finalAIScore - newAIScore} points).`);
+    }
+
+    const finalAiHasBanking = nextDevelopments.find((d) => d.id === 'banking')?.purchased;
+    const aiEndCoins = coins;
+    const aiInterest = finalAiHasBanking ? Math.floor(aiEndCoins / 10) : 0;
+    const aiNextCoins = finalAiHasBanking ? aiEndCoins + aiInterest : 0;
+
+    if (finalAiHasBanking && aiInterest > 0) {
+      logs.push(`AI Rival gained +${aiInterest} coins interest from Banking.`);
+    }
+
     const updatedAIState = {
       ...aiState,
       resources: tempResources,
@@ -1807,8 +1979,9 @@ export default function App() {
       monuments: nextMonuments,
       developments: nextDevelopments,
       disasterPoints: nextAIDisasterPoints,
-      score: newAIScore,
+      score: finalAIScore,
       history: [...logs, ...aiState.history],
+      coins: aiNextCoins,
     };
 
     const nextTurnCount = sourceState.turn + 1;
@@ -1863,7 +2036,7 @@ export default function App() {
       rollsLeft: 3,
       monuments: updatedHumanMonuments,
       workers: 0,
-      coins: 0,
+      coins: updatedHumanState.coins ?? 0,
       boughtDevelopmentThisTurn: false,
       playerStates: [updatedHumanState, updatedAIState],
       resources: activePlayerResources,
@@ -1907,6 +2080,13 @@ export default function App() {
             Select your game mode to begin. In hotseat multiplayer, players take turns on the same screen to build their monuments and empires!
           </div>
 
+          <button
+            onClick={() => setShowModifiersModal(true)}
+            className="w-full py-2.5 px-4 bg-gradient-to-r from-amber-950/10 to-orange-950/10 hover:from-amber-950/20 hover:to-orange-950/20 text-on-primary-fixed border border-amber-950/25 rounded-xl font-serif text-xs font-bold transition-all shadow-sm select-none flex items-center justify-center gap-1.5 uppercase tracking-wide cursor-pointer active:scale-98"
+          >
+            ⚙️ Customize Game Modifiers
+          </button>
+
           <div className="flex flex-col gap-3">
             <button
               onClick={() => handleStartSetup('solo')}
@@ -1936,8 +2116,424 @@ export default function App() {
             </button>
           </div>
 
+          {showModifiersModal && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 font-sans animate-fade-in">
+              <div className="texture-parchment max-w-lg w-full rounded-[2rem] p-6 md:p-8 border border-outline shadow-2xl relative flex flex-col gap-6 text-on-primary-fixed text-left animate-scale-in">
+                {/* Decorative corners */}
+                <div className="absolute top-4 left-4 w-6 h-6 border-t-2 border-l-2 border-outline-variant/30 pointer-events-none rounded-tl-xl" />
+                <div className="absolute top-4 right-4 w-6 h-6 border-t-2 border-r-2 border-outline-variant/30 pointer-events-none rounded-tr-xl" />
+                <div className="absolute bottom-4 left-4 w-6 h-6 border-b-2 border-l-2 border-outline-variant/30 pointer-events-none rounded-bl-xl" />
+                <div className="absolute bottom-4 right-4 w-6 h-6 border-b-2 border-r-2 border-outline-variant/30 pointer-events-none rounded-br-xl" />
+
+                <div className="text-center border-b border-outline-variant/30 pb-3">
+                  <h2 className="font-serif text-2xl font-extrabold uppercase tracking-tight text-amber-950">
+                    ⚙️ Custom Game Modifiers
+                  </h2>
+                  <p className="font-label text-[9px] font-bold text-on-tertiary-fixed/60 uppercase tracking-widest mt-1">
+                    Customize rules for the upcoming campaign
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-4 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
+                  {/* Modifier 1: Required Developments to finish */}
+                  <div className="flex flex-col gap-1.5 p-3 rounded-xl bg-surface-container-lowest/10 border border-on-tertiary-fixed/10">
+                    <div className="flex justify-between items-center">
+                      <span className="font-serif text-sm font-bold text-amber-950">Required Developments for Victory</span>
+                      <span className="bg-amber-950/20 text-on-primary-fixed border border-amber-900/30 rounded-full px-2 py-0.5 text-xs font-mono font-bold">
+                        {customModifiers.requiredDevelopmentsToFinish} Devs
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="3"
+                      max="10"
+                      value={customModifiers.requiredDevelopmentsToFinish}
+                      onChange={(e) => setCustomModifiers({
+                        ...customModifiers,
+                        requiredDevelopmentsToFinish: parseInt(e.target.value),
+                      })}
+                      className="w-full accent-amber-800"
+                    />
+                    <span className="text-[10px] text-on-tertiary-fixed/70 leading-relaxed font-sans">
+                      Configure the number of purchases needed to trigger the endgame. Default is 5.
+                    </span>
+                  </div>
+
+                  {/* Modifier 2: Unlimited Disasters past -10 */}
+                  <div className="flex flex-col gap-1.5 p-3 rounded-xl bg-surface-container-lowest/10 border border-on-tertiary-fixed/10">
+                    <div className="flex justify-between items-center">
+                      <span className="font-serif text-sm font-bold text-amber-950">Hardened Disaster Tracking</span>
+                      <label className="relative inline-flex items-center cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={customModifiers.unlimitedDisasters}
+                          onChange={(e) => setCustomModifiers({
+                            ...customModifiers,
+                            unlimitedDisasters: e.target.checked,
+                          })}
+                          className="sr-only peer"
+                        />
+                        <div className="w-9 h-5 bg-on-tertiary-fixed/20 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-800" />
+                      </label>
+                    </div>
+                    <span className="text-[10px] text-on-tertiary-fixed/70 leading-relaxed font-sans">
+                      Allows disaster points to grow indefinitely past -9 without overflowing, rolling over the pegboard and tracking with overflow notches.
+                    </span>
+                  </div>
+
+                  {/* Modifier 3: Start with all cities pre-built */}
+                  <div className="flex flex-col gap-1.5 p-3 rounded-xl bg-surface-container-lowest/10 border border-on-tertiary-fixed/10">
+                    <div className="flex justify-between items-center">
+                      <span className="font-serif text-sm font-bold text-amber-950">Start with All 7 Cities Pre-Built</span>
+                      <label className="relative inline-flex items-center cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={customModifiers.startWithAllCities}
+                          onChange={(e) => setCustomModifiers({
+                            ...customModifiers,
+                            startWithAllCities: e.target.checked,
+                          })}
+                          className="sr-only peer"
+                        />
+                        <div className="w-9 h-5 bg-on-tertiary-fixed/20 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-800" />
+                      </label>
+                    </div>
+                    <span className="text-[10px] text-on-tertiary-fixed/70 leading-relaxed font-sans">
+                      Begin the game with all 7 cities already completed, giving you 7 major dice from turn 1.
+                    </span>
+                  </div>
+
+                  {/* Modifier 4: Banking Development Option */}
+                  <div className="flex flex-col gap-1.5 p-3 rounded-xl bg-surface-container-lowest/10 border border-on-tertiary-fixed/10">
+                    <div className="flex justify-between items-center">
+                      <span className="font-serif text-sm font-bold text-amber-950">Enable "Banking" Development Option</span>
+                      <label className="relative inline-flex items-center cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={customModifiers.enableBanking}
+                          onChange={(e) => {
+                            const val = e.target.checked;
+                            setCustomModifiers({
+                              ...customModifiers,
+                              enableBanking: val,
+                              startingDevelopments: val
+                                ? customModifiers.startingDevelopments
+                                : customModifiers.startingDevelopments.filter(id => id !== 'banking')
+                            });
+                          }}
+                          className="sr-only peer"
+                        />
+                        <div className="w-9 h-5 bg-on-tertiary-fixed/20 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-800" />
+                      </label>
+                    </div>
+                    <span className="text-[10px] text-on-tertiary-fixed/70 leading-relaxed font-sans">
+                      Adds a new custom development called "Banking" (Cost: 30 coins, Value: 6 VP). When purchased, players carry over their coin stack between turns, earning 10% interest each turn.
+                    </span>
+                  </div>
+
+                  {/* Modifier: Extra Reroll */}
+                  <div className="flex flex-col gap-1.5 p-3 rounded-xl bg-surface-container-lowest/10 border border-on-tertiary-fixed/10">
+                    <div className="flex justify-between items-center">
+                      <span className="font-serif text-sm font-bold text-amber-950">Extra Reroll</span>
+                      <label className="relative inline-flex items-center cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={customModifiers.extraReroll}
+                          onChange={(e) => setCustomModifiers({
+                            ...customModifiers,
+                            extraReroll: e.target.checked,
+                          })}
+                          className="sr-only peer"
+                        />
+                        <div className="w-9 h-5 bg-on-tertiary-fixed/20 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-800" />
+                      </label>
+                    </div>
+                    <span className="text-[10px] text-on-tertiary-fixed/70 leading-relaxed font-sans">
+                      Start each turn with 4 rolls instead of 3, providing a strategic edge for custom matching.
+                    </span>
+                  </div>
+
+                  {/* Modifier: Loaded Dice (Workers) */}
+                  <div className="flex flex-col gap-1.5 p-3 rounded-xl bg-surface-container-lowest/10 border border-on-tertiary-fixed/10">
+                    <div className="flex justify-between items-center">
+                      <span className="font-serif text-sm font-bold text-amber-950">Loaded Dice (Workers)</span>
+                      <label className="relative inline-flex items-center cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={customModifiers.loadedDiceWorkers}
+                          onChange={(e) => setCustomModifiers({
+                            ...customModifiers,
+                            loadedDiceWorkers: e.target.checked,
+                          })}
+                          className="sr-only peer"
+                        />
+                        <div className="w-9 h-5 bg-on-tertiary-fixed/20 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-800" />
+                      </label>
+                    </div>
+                    <span className="text-[10px] text-on-tertiary-fixed/70 leading-relaxed font-sans">
+                      Gain +1 worker per worker-face and worker-choice die resolved in the collection phase.
+                    </span>
+                  </div>
+
+                  {/* Modifier: Loaded Dice (Coins) */}
+                  <div className="flex flex-col gap-1.5 p-3 rounded-xl bg-surface-container-lowest/10 border border-on-tertiary-fixed/10">
+                    <div className="flex justify-between items-center">
+                      <span className="font-serif text-sm font-bold text-amber-950">Loaded Dice (Coins)</span>
+                      <label className="relative inline-flex items-center cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={customModifiers.loadedDiceCoins}
+                          onChange={(e) => setCustomModifiers({
+                            ...customModifiers,
+                            loadedDiceCoins: e.target.checked,
+                          })}
+                          className="sr-only peer"
+                        />
+                        <div className="w-9 h-5 bg-on-tertiary-fixed/20 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-800" />
+                      </label>
+                    </div>
+                    <span className="text-[10px] text-on-tertiary-fixed/70 leading-relaxed font-sans">
+                      Gain +1 coin per coin-face die resolved in the collection phase.
+                    </span>
+                  </div>
+
+                  {/* Modifier: Generous Steppes */}
+                  <div className="flex flex-col gap-1.5 p-3 rounded-xl bg-surface-container-lowest/10 border border-on-tertiary-fixed/10">
+                    <div className="flex justify-between items-center">
+                      <span className="font-serif text-sm font-bold text-amber-950">Generous Steppes</span>
+                      <label className="relative inline-flex items-center cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={customModifiers.generousSteppes}
+                          onChange={(e) => setCustomModifiers({
+                            ...customModifiers,
+                            generousSteppes: e.target.checked,
+                          })}
+                          className="sr-only peer"
+                        />
+                        <div className="w-9 h-5 bg-on-tertiary-fixed/20 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-800" />
+                      </label>
+                    </div>
+                    <span className="text-[10px] text-on-tertiary-fixed/70 leading-relaxed font-sans">
+                      Start the campaign with resource reserves: +2 Food, +1 Wood, +3 Stone.
+                    </span>
+                  </div>
+
+                  {/* Modifier: Guild Taxation */}
+                  <div className="flex flex-col gap-1.5 p-3 rounded-xl bg-surface-container-lowest/10 border border-on-tertiary-fixed/10">
+                    <div className="flex justify-between items-center">
+                      <span className="font-serif text-sm font-bold text-amber-950">Guild Taxation</span>
+                      <label className="relative inline-flex items-center cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={customModifiers.guildTaxation}
+                          onChange={(e) => setCustomModifiers({
+                            ...customModifiers,
+                            guildTaxation: e.target.checked,
+                          })}
+                          className="sr-only peer"
+                        />
+                        <div className="w-9 h-5 bg-on-tertiary-fixed/20 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-800" />
+                      </label>
+                    </div>
+                    <span className="text-[10px] text-on-tertiary-fixed/70 leading-relaxed font-sans">
+                      Convert all unused workers directly into gold coins (1 coin per worker) at the end of the turn.
+                    </span>
+                  </div>
+
+                  {/* Modifier: Ruthless AI */}
+                  <div className="flex flex-col gap-1.5 p-3 rounded-xl bg-surface-container-lowest/10 border border-on-tertiary-fixed/10">
+                    <div className="flex justify-between items-center">
+                      <span className="font-serif text-sm font-bold text-amber-950">Ruthless AI (Rival Difficulty Boost)</span>
+                      <label className="relative inline-flex items-center cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={customModifiers.ruthlessAI}
+                          onChange={(e) => setCustomModifiers({
+                            ...customModifiers,
+                            ruthlessAI: e.target.checked,
+                          })}
+                          className="sr-only peer"
+                        />
+                        <div className="w-9 h-5 bg-on-tertiary-fixed/20 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-800" />
+                      </label>
+                    </div>
+                    <span className="text-[10px] text-on-tertiary-fixed/70 leading-relaxed font-sans">
+                      The Rival AI builds faster, scores harder, and receives a +20% score booster to its final standing.
+                    </span>
+                  </div>
+
+                  {/* Modifier: Plague & Desolation */}
+                  <div className="flex flex-col gap-1.5 p-3 rounded-xl bg-surface-container-lowest/10 border border-on-tertiary-fixed/10">
+                    <div className="flex justify-between items-center">
+                      <span className="font-serif text-sm font-bold text-amber-950">Plague & Desolation (Double Penalties)</span>
+                      <label className="relative inline-flex items-center cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={customModifiers.plagueDesolation}
+                          onChange={(e) => setCustomModifiers({
+                            ...customModifiers,
+                            plagueDesolation: e.target.checked,
+                          })}
+                          className="sr-only peer"
+                        />
+                        <div className="w-9 h-5 bg-on-tertiary-fixed/20 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-800" />
+                      </label>
+                    </div>
+                    <span className="text-[10px] text-on-tertiary-fixed/70 leading-relaxed font-sans">
+                      Unfed cities cost -2 disaster points each (double standard), and accumulated disaster points subtract double from your final score.
+                    </span>
+                  </div>
+
+                  {/* Modifier: Volatile World */}
+                  <div className="flex flex-col gap-1.5 p-3 rounded-xl bg-surface-container-lowest/10 border border-on-tertiary-fixed/10">
+                    <div className="flex justify-between items-center">
+                      <span className="font-serif text-sm font-bold text-amber-950">Volatile World (Disaster Cascades)</span>
+                      <label className="relative inline-flex items-center cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={customModifiers.volatileWorld}
+                          onChange={(e) => setCustomModifiers({
+                            ...customModifiers,
+                            volatileWorld: e.target.checked,
+                          })}
+                          className="sr-only peer"
+                        />
+                        <div className="w-9 h-5 bg-on-tertiary-fixed/20 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-800" />
+                      </label>
+                    </div>
+                    <span className="text-[10px] text-on-tertiary-fixed/70 leading-relaxed font-sans">
+                      If active, skull-triggered disasters (Drought, Pestilence) and Famine also destroy 1 random warehouse good in addition to their normal penalties.
+                    </span>
+                  </div>
+
+                  {/* Modifier: Solitaire Round Limit Slider */}
+                  <div className="flex flex-col gap-1.5 p-3 rounded-xl bg-surface-container-lowest/10 border border-on-tertiary-fixed/10">
+                    <div className="flex justify-between items-center">
+                      <span className="font-serif text-sm font-bold text-amber-950">Sabbatical Era Solo Rounds</span>
+                      <span className="bg-amber-950/20 text-on-primary-fixed border border-amber-900/30 rounded-full px-2 py-0.5 text-xs font-mono font-bold">
+                        {customModifiers.solitaireRoundLimit} Rounds
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="8"
+                      max="15"
+                      value={customModifiers.solitaireRoundLimit}
+                      onChange={(e) => setCustomModifiers({
+                        ...customModifiers,
+                        solitaireRoundLimit: parseInt(e.target.value),
+                      })}
+                      className="w-full accent-amber-800"
+                    />
+                    <span className="text-[10px] text-on-tertiary-fixed/70 leading-relaxed font-sans">
+                      Configure the total round count limit in Solo Mode campaigns (ranges 8 to 15, default is 10).
+                    </span>
+                  </div>
+
+                  {/* Modifier: Architectural Hegemony */}
+                  <div className="flex flex-col gap-1.5 p-3 rounded-xl bg-surface-container-lowest/10 border border-on-tertiary-fixed/10">
+                    <div className="flex justify-between items-center">
+                      <span className="font-serif text-sm font-bold text-amber-950">Architectural Hegemony</span>
+                      <label className="relative inline-flex items-center cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={customModifiers.architecturalHegemony}
+                          onChange={(e) => setCustomModifiers({
+                            ...customModifiers,
+                            architecturalHegemony: e.target.checked,
+                          })}
+                          className="sr-only peer"
+                        />
+                        <div className="w-9 h-5 bg-on-tertiary-fixed/20 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-800" />
+                      </label>
+                    </div>
+                    <span className="text-[10px] text-on-tertiary-fixed/70 leading-relaxed font-sans">
+                      The game cannot end via development collection! The campaign continues until all active monuments are completed (or round limits are met).
+                    </span>
+                  </div>
+
+                  {/* Modifier 5: Starting developments packages */}
+                  <div className="flex flex-col gap-1.5 p-3 rounded-xl bg-surface-container-lowest/10 border border-on-tertiary-fixed/10">
+                    <span className="font-serif text-sm font-bold text-amber-950">Starting Developments Pack</span>
+                    <div className="grid grid-cols-2 gap-1.5 mt-1">
+                      {(() => {
+                        const devList = ['leadership', 'irrigation', 'agriculture', 'quarrying', 'medicine', 'coinage', 'caravans', 'religion', 'granaries', 'masonry', 'engineering', 'architecture'];
+                        if (customModifiers.enableBanking) {
+                          devList.push('banking');
+                        }
+                        return devList.map((devId) => {
+                          const isSelected = customModifiers.startingDevelopments.includes(devId);
+                          const label = devId.charAt(0).toUpperCase() + devId.slice(1);
+                          return (
+                            <button
+                              key={devId}
+                              onClick={() => {
+                                const list = isSelected
+                                  ? customModifiers.startingDevelopments.filter((id) => id !== devId)
+                                  : [...customModifiers.startingDevelopments, devId];
+                                setCustomModifiers({
+                                  ...customModifiers,
+                                  startingDevelopments: list,
+                                });
+                              }}
+                              className={`px-2 py-1 rounded text-[10px] font-bold border transition-all text-left truncate flex items-center justify-between cursor-pointer ${
+                                isSelected
+                                  ? 'bg-amber-950/20 border-amber-900/40 text-amber-950 shadow-sm font-bold'
+                                  : 'bg-surface-container-lowest/5 border-on-tertiary-fixed/15 text-on-tertiary-fixed hover:bg-surface-container-lowest/10'
+                              }`}
+                            >
+                              <span>{label}</span>
+                              {isSelected && <span className="text-[9px]">✔</span>}
+                            </button>
+                          );
+                        });
+                      })()}
+                    </div>
+                    <span className="text-[10px] text-on-tertiary-fixed/70 leading-relaxed font-sans mt-1">
+                      Select developments to unlock them pre-purchased right at the start of the game.
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 justify-end mt-2 pt-2 border-t border-outline-variant/20">
+                  <button
+                    onClick={() => setCustomModifiers({
+                      requiredDevelopmentsToFinish: 5,
+                      unlimitedDisasters: false,
+                      startingDevelopments: [],
+                      enableBanking: false,
+                      startWithAllCities: false,
+                      extraReroll: false,
+                      loadedDiceWorkers: false,
+                      loadedDiceCoins: false,
+                      generousSteppes: false,
+                      guildTaxation: false,
+                      ruthlessAI: false,
+                      plagueDesolation: false,
+                      volatileWorld: false,
+                      solitaireRoundLimit: 10,
+                      architecturalHegemony: false,
+                    })}
+                    className="px-4 py-2 border border-on-tertiary-fixed/20 hover:bg-surface-variant/10 text-on-primary-fixed rounded-xl text-xs font-serif font-bold uppercase tracking-wide cursor-pointer active:scale-95 transition-all"
+                  >
+                    Reset Defaults
+                  </button>
+                  <button
+                    onClick={() => setShowModifiersModal(false)}
+                    className="px-5 py-2 bg-on-primary-fixed hover:bg-surface-variant text-white hover:text-white rounded-xl text-xs font-serif font-bold uppercase tracking-wide cursor-pointer active:scale-95 transition-all shadow-md"
+                  >
+                    Save & Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
         </div>
+        <footer className="absolute bottom-2 left-3 select-none pointer-events-auto z-10 text-[9px] text-[#ebd9c5]/50 hover:text-[#ebd9c5]/80 font-sans tracking-wide transition-colors duration-200">
+          Inspired by <span className="italic font-medium">Roll Through the Ages</span> • Built by <span className="font-semibold">Bruno Rodrigues</span> with Gemini • <a href="https://github.com/b-rodrigues/alea-imperii" target="_blank" rel="noopener noreferrer" className="underline hover:text-[#ebd9c5] transition-colors duration-200">Source Code</a> • <a href="https://buymeacoffee.com/brodriguesco" target="_blank" rel="noopener noreferrer" className="underline hover:text-[#ebd9c5] transition-colors duration-200">Donate</a>
+        </footer>
       </main>
     );
   }
@@ -2062,6 +2658,9 @@ export default function App() {
             </button>
           </div>
         </div>
+        <footer className="absolute bottom-2 left-3 select-none pointer-events-auto z-10 text-[9px] text-[#ebd9c5]/50 hover:text-[#ebd9c5]/80 font-sans tracking-wide transition-colors duration-200">
+          Inspired by <span className="italic font-medium">Roll Through the Ages</span> • Built by <span className="font-semibold">Bruno Rodrigues</span> with Gemini • <a href="https://github.com/b-rodrigues/alea-imperii" target="_blank" rel="noopener noreferrer" className="underline hover:text-[#ebd9c5] transition-colors duration-200">Source Code</a> • <a href="https://buymeacoffee.com/brodriguesco" target="_blank" rel="noopener noreferrer" className="underline hover:text-[#ebd9c5] transition-colors duration-200">Donate</a>
+        </footer>
       </main>
     );
   }
@@ -2570,6 +3169,9 @@ export default function App() {
         </div>
       )}
 
+      <footer className="absolute bottom-2 left-3 select-none pointer-events-auto z-10 text-[9px] text-[#ebd9c5]/50 hover:text-[#ebd9c5]/80 font-sans tracking-wide transition-colors duration-200">
+        Inspired by <span className="italic font-medium">Roll Through the Ages</span> • Built by <span className="font-semibold">Bruno Rodrigues</span> with Gemini • <a href="https://github.com/b-rodrigues/alea-imperii" target="_blank" rel="noopener noreferrer" className="underline hover:text-[#ebd9c5] transition-colors duration-200">Source Code</a> • <a href="https://buymeacoffee.com/brodriguesco" target="_blank" rel="noopener noreferrer" className="underline hover:text-[#ebd9c5] transition-colors duration-200">Donate</a>
+      </footer>
     </main>
   );
 }

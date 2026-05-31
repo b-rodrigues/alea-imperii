@@ -1,5 +1,5 @@
 import { motion } from 'motion/react';
-import { Utensils, Hammer, Coins, Package, Skull, Sparkles, Check } from 'lucide-react';
+import { Utensils, Hammer, Coins, Package, Skull, Sparkles, Check, RotateCw } from 'lucide-react';
 import type { Die } from '../types';
 
 interface DiceTrayProps {
@@ -97,10 +97,16 @@ export default function DiceTray({
                 } ${isSkull ? 'bg-red-950/5' : ''} ${phase !== 'roll' || isEmpty ? 'opacity-90 cursor-default' : 'hover:brightness-105'}`}
                 title={phase === 'roll' ? (isEmpty ? "Roll the dice to see results" : `${getLabel(die.value)} - Click to keep`) : getLabel(die.value)}
               >
-                {getIcon(die.value)}
-                <span className="text-[7px] font-semibold uppercase font-label mt-0.5 opacity-70 leading-none">
-                  {getLabel(die.value)}
-                </span>
+                {isEmpty ? (
+                  <RotateCw size={14} className="text-amber-950/70 animate-pulse" />
+                ) : (
+                  <>
+                    {getIcon(die.value)}
+                    <span className="text-[7px] font-semibold uppercase font-label mt-0.5 opacity-70 leading-none">
+                      {getLabel(die.value)}
+                    </span>
+                  </>
+                )}
 
                 {/* Kept indicator badge */}
                 {die.kept && phase === 'roll' && (
