@@ -6,6 +6,7 @@ import {
   hasDevelopment,
   type GameState,
 } from './game'
+import { getStartingState } from './utils/gameDefaults'
 
 // Helper to get to a specific phase quickly
 function rollAndCollect(state: GameState, faces: import('./game').DiceFace[]): GameState {
@@ -665,6 +666,133 @@ describe('gameReducer', () => {
       // Step Pyramid is claimed for Player 2
       const p2Pyramid = s.playerStates?.[1].monuments.find((m) => m.id === 'step-pyramid')
       expect(p2Pyramid?.firstClaimed).toBe(true)
+    })
+  })
+
+  describe('custom game modifiers', () => {
+
+    it('applies startWithAllCities modifier to initial city count', () => {
+      const stateWithAllCities = getStartingState({
+        startWithAllCities: true,
+        requiredDevelopmentsToFinish: 5,
+        unlimitedDisasters: false,
+        startingDevelopments: [],
+        enableBanking: false,
+      })
+      expect(stateWithAllCities.cities.count).toBe(7)
+    })
+
+    it('applies startingDevelopments modifier to pre-purchase developments', () => {
+      const stateWithStartingDevs = getStartingState({
+        startWithAllCities: false,
+        requiredDevelopmentsToFinish: 5,
+        unlimitedDisasters: false,
+        startingDevelopments: ['leadership', 'agriculture'],
+        enableBanking: false,
+      })
+      const leadership = stateWithStartingDevs.developments.find((d) => d.id === 'leadership')
+      const agriculture = stateWithStartingDevs.developments.find((d) => d.id === 'agriculture')
+      expect(leadership?.purchased).toBe(true)
+      expect(agriculture?.purchased).toBe(true)
+    })
+
+    it('adds Banking development if enableBanking modifier is true', () => {
+      const stateWithBanking = getStartingState({
+        startWithAllCities: false,
+        requiredDevelopmentsToFinish: 5,
+        unlimitedDisasters: false,
+        startingDevelopments: [],
+        enableBanking: true,
+      })
+      const banking = stateWithBanking.developments.find((d) => d.id === 'banking')
+      expect(banking).toBeDefined()
+      expect(banking?.cost).toBe(30)
+    })
+
+    it('applies generousSteppes modifier to starting resources', () => {
+      const state = getStartingState({
+        generousSteppes: true,
+      } as any)
+      expect(state.resources.food).toBe(5)
+      expect(state.resources.wood).toBe(3)
+      expect(state.resources.stone).toBe(3)
+    })
+
+    it('applies extraReroll modifier to starting rollsLeft count', () => {
+      const state = getStartingState({
+        extraReroll: true,
+      } as any)
+      expect(state.rollsLeft).toBe(4)
+    })
+
+    it('applies loadedDiceWorkers and loadedDiceCoins modifiers inside resolveCollection', () => {
+      let state = {
+        ...initialGameState,
+        modifiers: {
+          loadedDiceWorkers: true,
+          loadedDiceCoins: true,
+        } as any,
+        diceResults: ['workers3', 'coins7'] as any,
+        rollNumber: 1,
+        phase: 'rolling'
+      }
+      
+      const nextState = gameReducer(state, { type: 'COLLECT' })
+      expect(nextState.workers).toBe(4)
+      expect(nextState.coins).toBe(8)
+    })
+
+    it('applies plagueDesolation and volatileWorld modifiers inside feedAndDisaster', () => {
+      let state = {
+        ...initialGameState,
+        modifiers: {
+          plagueDesolation: true,
+          volatileWorld: true,
+        } as any,
+        food: 0,
+        cities: 3,
+        skulls: 2,
+        goods: {
+          ...initialGameState.goods,
+          wood: 1
+        },
+        phase: 'feeding'
+      }
+      
+      const nextState = gameReducer(state, { type: 'FEED_AND_RESOLVE_DISASTERS' })
+      expect(nextState.disasterPoints).toBe(8)
+      expect(nextState.goods.wood).toBe(0)
+    })
+
+    it('applies plagueDesolation double disaster score deduction in calculateScore', () => {
+      let state = {
+        ...initialGameState,
+        modifiers: {
+          plagueDesolation: true,
+        } as any,
+        disasterPoints: 5
+      }
+      
+      expect(calculateScore(state)).toBe(-10)
+    })
+
+    it('applies architecturalHegemony and solitaireRoundLimit inside checkGameEnd', () => {
+      let state = {
+        ...initialGameState,
+        modifiers: {
+          architecturalHegemony: true,
+          solitaireRoundLimit: 12,
+        } as any,
+        turn: 11,
+        phase: 'discarding'
+      }
+      
+      const nextState1 = gameReducer(state, { type: 'END_TURN' })
+      expect(nextState1.gameEnded).toBe(false)
+      
+      state.turn = 12
+      const nextState2 = gameReducer(state, { type: 'END_TURN' })
+      expect(nextState2.gameEnded).toBe(true)
     })
   })
 })

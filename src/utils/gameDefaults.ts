@@ -1,4 +1,4 @@
-import type { Monument, Development, GameState } from '../types';
+import type { Monument, Development, GameState, GameModifiers } from '../types';
 
 export const INITIAL_MONUMENTS: Monument[] = [
   {
@@ -180,37 +180,61 @@ export const INITIAL_DEVELOPMENTS: Development[] = [
   },
 ];
 
-export const getStartingState = (): GameState => ({
-  turn: 1,
-  gameMode: 'solo',
-  phase: 'roll',
-  rollsLeft: 3,
-  recentStatus: 'A new game begins. Roll the dice to acquire resources and build your empire!',
-  score: 0,
-  resources: {
-    food: 3,
-    wood: 2,
-    stone: 0,
-    pottery: 0,
-    cloth: 0,
-    spear: 0,
-  },
-  cities: {
-    count: 3,
-    progress: 0,
-  },
-  monuments: INITIAL_MONUMENTS.map(m => ({ ...m })),
-  developments: INITIAL_DEVELOPMENTS.map(d => ({ ...d })),
-  disasterPoints: 0,
-  history: ['Turn 1: Game started. Current active cities: 3.'],
-  isMuted: true,
-  aiScores: {
-    monuments: {},
-  },
-  workers: 0,
-  coins: 0,
-  boughtDevelopmentThisTurn: false,
-});
+export const BANKING_DEVELOPMENT: Development = {
+  id: 'banking',
+  name: 'Banking',
+  cost: 30,
+  points: 6,
+  purchased: false,
+  effect: 'Keep coins between turns. Earn interest of 1 coin per 10 kept coins each turn.',
+};
+
+export const getStartingState = (modifiers?: GameModifiers): GameState => {
+  const baseDevs = [...INITIAL_DEVELOPMENTS];
+  if (modifiers?.enableBanking) {
+    baseDevs.push(BANKING_DEVELOPMENT);
+  }
+
+  const developments = baseDevs.map((d) => {
+    const isStarting = modifiers?.startingDevelopments?.includes(d.id);
+    return { ...d, purchased: !!isStarting };
+  });
+
+  const cityCount = modifiers?.startWithAllCities ? 7 : 3;
+
+  return {
+    turn: 1,
+    gameMode: 'solo',
+    phase: 'roll',
+    rollsLeft: modifiers?.extraReroll ? 4 : 3,
+    recentStatus: 'A new game begins. Roll the dice to acquire resources and build your empire!',
+    score: 0,
+    resources: {
+      food: modifiers?.generousSteppes ? 5 : 3,
+      wood: modifiers?.generousSteppes ? 3 : 2,
+      stone: modifiers?.generousSteppes ? 3 : 0,
+      pottery: 0,
+      cloth: 0,
+      spear: 0,
+    },
+    cities: {
+      count: cityCount,
+      progress: 0,
+    },
+    monuments: INITIAL_MONUMENTS.map(m => ({ ...m })),
+    developments,
+    disasterPoints: 0,
+    history: [`Turn 1: Game started. Current active cities: ${cityCount}.`],
+    isMuted: true,
+    aiScores: {
+      monuments: {},
+    },
+    workers: 0,
+    coins: 0,
+    boughtDevelopmentThisTurn: false,
+    modifiers,
+  };
+};
 
 export const getResourceLimits = () => ({
   food: 15,
