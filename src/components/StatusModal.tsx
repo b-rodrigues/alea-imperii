@@ -178,6 +178,79 @@ export default function StatusModal({ isOpen, gameState, onClose }: StatusModalP
           </div>
         </div>
 
+        {/* Built Monuments and Purchased Developments Lists */}
+        <div className="mt-6 border-t border-outline-variant/30 pt-5 select-none font-sans">
+          <h3 className="font-serif text-base font-bold text-on-primary-fixed border-b border-outline-variant/20 pb-1.5 flex items-center gap-1.5 mb-3 uppercase tracking-wider">
+            🏛️ Completed Milestones
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Monuments column */}
+            <div className="bg-surface-container-lowest/10 border border-on-tertiary-fixed/10 rounded-xl p-3.5 flex flex-col gap-2">
+              <span className="text-[10px] font-bold text-on-primary-fixed uppercase tracking-widest border-b border-on-tertiary-fixed/5 pb-1 flex items-center justify-between">
+                <span>Completed Monuments</span>
+                <span className="text-amber-900 font-serif">
+                  {monuments.filter(m => m.completedByPlayer).length} completed
+                </span>
+              </span>
+              {(() => {
+                const completed = monuments.filter(m => m.completedByPlayer);
+                if (completed.length === 0) {
+                  return (
+                    <div className="text-[10px] text-on-primary-fixed/40 italic py-2">
+                      No monuments completed yet.
+                    </div>
+                  );
+                }
+                return (
+                  <ul className="text-[10px] text-on-primary-fixed/80 list-disc list-inside space-y-1.5">
+                    {completed.map((m, idx) => {
+                      const wasFirst = !m.completedByAI;
+                      return (
+                        <li key={idx} className="leading-tight font-medium">
+                          <span className="font-semibold text-amber-950">{m.name}</span>{" "}
+                          <span className="opacity-70">
+                            ({wasFirst ? "First Builder" : "Secondary Builder"})
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                );
+              })()}
+            </div>
+
+            {/* Developments column */}
+            <div className="bg-surface-container-lowest/10 border border-on-tertiary-fixed/10 rounded-xl p-3.5 flex flex-col gap-2">
+              <span className="text-[10px] font-bold text-on-primary-fixed uppercase tracking-widest border-b border-on-tertiary-fixed/5 pb-1 flex items-center justify-between">
+                <span>Purchased Developments</span>
+                <span className="text-amber-900 font-serif">
+                  {developments.filter(d => d.purchased).length} purchased
+                </span>
+              </span>
+              {(() => {
+                const purchased = developments.filter(d => d.purchased);
+                if (purchased.length === 0) {
+                  return (
+                    <div className="text-[10px] text-on-primary-fixed/40 italic py-2">
+                      No developments purchased yet.
+                    </div>
+                  );
+                }
+                return (
+                  <ul className="text-[10px] text-on-primary-fixed/80 list-disc list-inside space-y-1.5">
+                    {purchased.map((d, idx) => (
+                      <li key={idx} className="leading-tight font-medium">
+                        <span className="font-semibold text-amber-900">{d.name}</span>{" "}
+                        <span className="opacity-70">({d.cost} coins)</span>
+                      </li>
+                    ))}
+                  </ul>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+
         <div className="mt-8 flex justify-end">
           <button
             onClick={onClose}

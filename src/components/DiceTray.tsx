@@ -40,6 +40,8 @@ export default function DiceTray({
         return <Sparkles size={size} className="text-amber-600" />;
       case 'coin':
         return <Coins size={size} className="text-yellow-700" />;
+      case 'empty':
+        return <span className="text-on-surface-variant/40 text-lg font-serif">?</span>;
     }
   };
 
@@ -51,6 +53,7 @@ export default function DiceTray({
       case 'worker': return '3 Workers';
       case 'food_or_worker': return '2 Food/Work';
       case 'coin': return '7 Coins';
+      case 'empty': return 'Unrolled';
     }
   };
 
@@ -75,21 +78,24 @@ export default function DiceTray({
       <div className="flex flex-wrap gap-3 justify-center flex-1 py-1" id="dice-container">
         {dice.map((die) => {
           const isSkull = die.value === 'skull';
+          const isEmpty = die.value === 'empty';
           const canRerollSkull = isSkull && hasLeadership && !hasRerolledSkullThisTurn;
 
           return (
             <div key={die.id} className="relative group">
               <motion.button
-                disabled={phase !== 'roll'}
+                disabled={phase !== 'roll' || isEmpty}
                 onClick={() => onToggleKeep(die.id)}
                 animate={die.rolling ? { rotate: [0, 90, 180, 270, 360], scale: [1, 1.15, 0.9, 1.1, 1] } : {}}
                 transition={{ duration: 0.5, ease: 'easeInOut' }}
                 className={`w-10 h-10 dice-face flex flex-col items-center justify-center font-bold text-xs relative transition-all ${
                   die.kept && phase === 'roll'
                     ? 'ring-2 ring-primary scale-105 border-primary shadow border'
-                    : 'border border-outline-variant'
-                } ${isSkull ? 'bg-red-950/5' : ''} ${phase !== 'roll' ? 'opacity-90 cursor-default' : 'hover:brightness-105'}`}
-                title={phase === 'roll' ? `${getLabel(die.value)} - Click to keep` : getLabel(die.value)}
+                    : isEmpty
+                      ? 'border-dashed border-outline-variant/60 bg-surface-container-low cursor-default'
+                      : 'border border-outline-variant'
+                } ${isSkull ? 'bg-red-950/5' : ''} ${phase !== 'roll' || isEmpty ? 'opacity-90 cursor-default' : 'hover:brightness-105'}`}
+                title={phase === 'roll' ? (isEmpty ? "Roll the dice to see results" : `${getLabel(die.value)} - Click to keep`) : getLabel(die.value)}
               >
                 {getIcon(die.value)}
                 <span className="text-[7px] font-semibold uppercase font-label mt-0.5 opacity-70 leading-none">

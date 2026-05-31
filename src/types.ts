@@ -1,6 +1,6 @@
 export interface Die {
   id: number;
-  value: 'food' | 'goods' | 'skull' | 'worker' | 'food_or_worker' | 'coin';
+  value: 'food' | 'goods' | 'skull' | 'worker' | 'food_or_worker' | 'coin' | 'empty';
   kept: boolean;
   rolling: boolean;
 }
