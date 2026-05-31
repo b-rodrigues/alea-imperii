@@ -6,6 +6,7 @@ import {
   randomRolls,
   calculateScore,
   hasDevelopment,
+  getNextActionHint,
   GOODS_ORDER,
   GOOD_VALUES,
   type GameAction,
@@ -91,21 +92,39 @@ function App() {
         📖
       </button>
       {showRules && <RulesPopup onClose={() => setShowRules(false)} />}
-      <h1>Alea Imperii</h1>
-      <p className="subtitle">Roll Through the Ages — The Bronze Age</p>
 
-      {/* ── Status bar ─────────────────────────────────────── */}
-      <section className="panel stats-grid">
-        <p>Turn: {gameState.turn}/10</p>
-        <p>Cities: {gameState.cities}</p>
-        <p>Food: {gameState.food}</p>
-        <p>Coins: {gameState.coins}</p>
-        <p>Workers: {gameState.workers}</p>
-        <p>Skulls: {gameState.skulls}</p>
-        <p>Disasters: -{gameState.disasterPoints}</p>
-        <p>Score: {score}</p>
-        <p>Phase: {gameState.phase}</p>
+      {/* ── Roguelike status log (always visible at top) ────── */}
+      <section className="status-log">
+        <div className="status-hint">{getNextActionHint(gameState)}</div>
+        <div className="status-messages">
+          {gameState.messageLog.map((msg, i) => (
+            <div key={`log-${i}`} className={`log-entry${i === 0 ? ' latest' : ''}`}>{msg}</div>
+          ))}
+        </div>
       </section>
+
+      {/* ── Resource bar ───────────────────────────────────── */}
+      <section className="panel stats-grid">
+        <span>T{gameState.turn}/10</span>
+        <span>🏙 {gameState.cities}</span>
+        <span>🍞 {gameState.food}</span>
+        <span>💰 {gameState.coins}</span>
+        <span>⚒ {gameState.workers}</span>
+        <span>☠ {gameState.skulls}</span>
+        <span>📉 -{gameState.disasterPoints}</span>
+        <span>⭐ {score}</span>
+      </section>
+
+      {/* ── Goods track (compact) ─────────────────────────── */}
+      <section className="panel goods-bar">
+        {GOODS_ORDER.map((g) => (
+          <span key={g} className="good-chip">{g}: {gameState.goods[g]}</span>
+        ))}
+        <span className="good-chip total">val: {GOODS_ORDER.reduce((s, g) => s + gameState.goods[g] * GOOD_VALUES[g], 0)}</span>
+      </section>
+
+      {/* ── Main game area (scrollable if content overflows) ── */}
+      <div className="game-area">
 
       {/* ── Rolling phase ──────────────────────────────────── */}
       {gameState.phase === 'rolling' && (
@@ -329,20 +348,6 @@ function App() {
         </section>
       )}
 
-      {/* ── Goods track ────────────────────────────────────── */}
-      <section className="panel">
-        <h2>Goods Track</h2>
-        <p>
-          {GOODS_ORDER.map((g) => `${g}: ${gameState.goods[g]} (${GOOD_VALUES[g]}¢)`).join(' | ')}
-          {' '}— Total value: {GOODS_ORDER.reduce((s, g) => s + gameState.goods[g] * GOOD_VALUES[g], 0)}
-        </p>
-      </section>
-
-      {/* ── Status message ─────────────────────────────────── */}
-      <section className="panel message">
-        <strong>Status:</strong> {gameState.message}
-      </section>
-
       {/* ── Game over ──────────────────────────────────────── */}
       {gameState.gameEnded && (
         <section className="panel game-end">
@@ -356,6 +361,7 @@ function App() {
           </p>
         </section>
       )}
+      </div>
     </main>
   )
 }
