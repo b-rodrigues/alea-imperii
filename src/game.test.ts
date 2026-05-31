@@ -579,4 +579,92 @@ describe('gameReducer', () => {
       expect(s2.diceResults[0]).toBe('food3') // unchanged
     })
   })
+
+  describe('hotseat multiplayer', () => {
+    it('sets up 2-player game and filters monuments', () => {
+      const s = gameReducer(initialGameState, { type: 'START_GAME', playerCount: 2 })
+      expect(s.setupCompleted).toBe(true)
+      expect(s.playerCount).toBe(2)
+      expect(s.activePlayerIndex).toBe(0)
+      expect(s.playerStates?.length).toBe(2)
+      expect(s.playerStates?.[0].name).toBe('Player 1')
+      expect(s.playerStates?.[1].name).toBe('Player 2')
+
+      // Temple and Great Pyramid must be filtered/removed in 2-player mode
+      const p1Mons = s.playerStates?.[0].monuments || []
+      expect(p1Mons.some((m) => m.id === 'temple')).toBe(false)
+      expect(p1Mons.some((m) => m.id === 'great-pyramid')).toBe(false)
+      expect(p1Mons.some((m) => m.id === 'obelisk')).toBe(true) // others remain
+    })
+
+    it('sets up 3-player game and filters Hanging Gardens', () => {
+      const s = gameReducer(initialGameState, { type: 'START_GAME', playerCount: 3 })
+      const p1Mons = s.playerStates?.[0].monuments || []
+      expect(p1Mons.some((m) => m.id === 'hanging-gardens')).toBe(false)
+      expect(p1Mons.some((m) => m.id === 'temple')).toBe(true) // Temple remains in 3-player
+    })
+
+    it('locks skulls automatically in multiplayer dice rolls', () => {
+      let s = gameReducer(initialGameState, { type: 'START_GAME', playerCount: 2 })
+      
+      s = gameReducer(s, {
+        type: 'ROLL_DICE',
+        rolls: ['food3', 'goods2skull', 'workers3'],
+      })
+
+      // Skull should be locked (kept = true), others unlocked (kept = false)
+      expect(s.diceKept[1]).toBe(true)
+      expect(s.diceKept[0]).toBe(false)
+      expect(s.diceKept[2]).toBe(false)
+    })
+
+    it('prevents unlocking/unkeeping skulls in multiplayer', () => {
+      let s = gameReducer(initialGameState, { type: 'START_GAME', playerCount: 2 })
+      
+      s = gameReducer(s, {
+        type: 'ROLL_DICE',
+        rolls: ['food3', 'goods2skull', 'workers3'],
+      })
+
+      // Attempt to unkeep skull die (index 1)
+      const attempt = gameReducer(s, { type: 'UNKEEP_DIE', index: 1 })
+      expect(attempt.diceKept[1]).toBe(true) // remains locked!
+    })
+
+    it('switches player active index on end turn', () => {
+      let s = gameReducer(initialGameState, { type: 'START_GAME', playerCount: 2 })
+      
+      // Player 1 roll and done
+      s = gameReducer(s, { type: 'ROLL_DICE', rolls: ['food3', 'food3', 'food3'] })
+      s = gameReducer(s, { type: 'COLLECT' })
+      s = gameReducer(s, { type: 'FEED_AND_RESOLVE_DISASTERS' })
+      s = gameReducer(s, { type: 'DONE_BUILDING' })
+      s = gameReducer(s, { type: 'SKIP_BUY' })
+      s = gameReducer(s, { type: 'END_TURN' })
+
+      // Active player switches to Player 2, phase is rolling, turn is still 1
+      expect(s.activePlayerIndex).toBe(1)
+      expect(s.phase).toBe('rolling')
+      expect(s.turn).toBe(1)
+      expect(s.cities).toBe(3) // Player 2's cities
+    })
+
+    it('monument completion by active player marks firstClaimed:true for opponents', () => {
+      let s = gameReducer(initialGameState, { type: 'START_GAME', playerCount: 2 })
+      
+      // Player 1 gets 3 workers, assigns them to Step Pyramid (needs 3 progress)
+      s = gameReducer(s, { type: 'ROLL_DICE', rolls: ['workers3', 'food3', 'food3'] })
+      s = gameReducer(s, { type: 'COLLECT' })
+      s = gameReducer(s, { type: 'FEED_AND_RESOLVE_DISASTERS' })
+      s = gameReducer(s, { type: 'BUILD_MONUMENT', monumentId: 'step-pyramid', workers: 3 })
+
+      // Step Pyramid is completed by Player 1
+      const p1Pyramid = s.playerStates?.[0].monuments.find((m) => m.id === 'step-pyramid')
+      expect(p1Pyramid?.completedByPlayer).toBe(true)
+
+      // Step Pyramid is claimed for Player 2
+      const p2Pyramid = s.playerStates?.[1].monuments.find((m) => m.id === 'step-pyramid')
+      expect(p2Pyramid?.firstClaimed).toBe(true)
+    })
+  })
 })
