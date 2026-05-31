@@ -41,3 +41,31 @@ Player count:
 
 Genre:
 Civilizational dice strategy game
+
+## Development
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Start the dev server:
+
+```bash
+npm run dev
+```
+
+Run checks while developing:
+
+```bash
+npm run test
+npm run lint
+npm run build
+```
+
+If you use Nix:
+
+```bash
+nix develop
+```
